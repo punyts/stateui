@@ -1,3 +1,7 @@
 node_modules/
 dist/
 coverage/
+*.tsbuildinfo
+.build-stamp
+test-results/
+__screenshots__/
