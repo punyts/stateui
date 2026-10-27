@@ -33,7 +33,7 @@
     "dependencies": {
         "@punyts/core": "^1.0.0",
         "@punyts/expression": "^1.1.0",
-        "@punyts/state": "^1.0.0"
+        "@punyts/state": "^1.1.0"
     },
     "devDependencies": {
         "@vitest/browser-playwright": "^4.1.10",
