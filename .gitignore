@@ -5,3 +5,4 @@ coverage/
 .build-stamp
 test-results/
 __screenshots__/
+.vitest-attachments/
