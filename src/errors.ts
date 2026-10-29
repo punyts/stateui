@@ -2,8 +2,8 @@
  * Base class for every error StateUI throws, so callers can catch them all with one instanceof check
  */
 export class StateUIError extends Error {
-    constructor(message: string) {
-        super(message);
+    constructor(message: string, options?: ErrorOptions) {
+        super(message, options);
         this.name = new.target.name;
         //keep instanceof working when the class is down-levelled or extended
         Object.setPrototypeOf(this, new.target.prototype);
@@ -38,18 +38,20 @@ export class TemplateParseError extends StateUIError {
 export interface TemplateCompileErrorDetails {
     nodePath?: number[];
     line?: number;
+    //the underlying error, e.g. from the expression parser
+    cause?: unknown;
 }
 
 /**
- * The template parsed but uses something StateUI does not allow (e.g. a script or style element).
- * nodePath is the childNodes index path from the template root to the offending node
+ * The template parsed but uses something StateUI does not allow (e.g. a script or style element, or an invalid
+ * {{ }} expression). nodePath is the childNodes index path from the template root to the offending node
  */
 export class TemplateCompileError extends StateUIError {
     readonly nodePath?: number[];
     readonly line?: number;
 
     constructor(message: string, details: TemplateCompileErrorDetails = {}) {
-        super(message);
+        super(message, details.cause === undefined ? undefined : { cause: details.cause });
         this.nodePath = details.nodePath;
         this.line = details.line;
     }
