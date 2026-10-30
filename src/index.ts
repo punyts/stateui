@@ -5,3 +5,5 @@ export type { TemplateParseErrorDetails, TemplateCompileErrorDetails } from "./e
 export { parseTemplate, PARSE_HINT } from "./template/parse.js";
 export { tokenize } from "./template/tokenize.js";
 export type { TokenPart, TokenizeResult } from "./template/tokenize.js";
+export { mount, unmount, findParentScope } from "./component/context.js";
+export type { MountContext, ScopeConsumer, ScopeProvider } from "./component/types.js";
