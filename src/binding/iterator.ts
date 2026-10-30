@@ -9,7 +9,7 @@ const REPEAT = 'repeat';
 const KEY = 'key';
 
 //the iterator grammar of @punyts/expression: k[,i[,v]] in|for <collection> [sort <by> [asc|desc]] [filter <expr>]
-const PATT_ITERATOR = /^([A-Za-z0-9$_]+)(?:, ?([A-Za-z0-9$_]+))?(?:, ?([A-Za-z0-9$_]+))? (in|for) (.+?)(?: sort ([A-z0-9$._[\]]+)(?: (desc|asc))?)?(?: filter (.+))?$/i;
+export const PATT_ITERATOR = /^([A-Za-z0-9$_]+)(?:, ?([A-Za-z0-9$_]+))?(?:, ?([A-Za-z0-9$_]+))? (in|for) (.+?)(?: sort ([A-z0-9$._[\]]+)(?: (desc|asc))?)?(?: filter (.+))?$/i;
 
 export interface RepeatEntryData {
     iterator: CompiledExpression;

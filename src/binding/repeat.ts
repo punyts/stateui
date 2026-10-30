@@ -10,7 +10,7 @@ import { reconcileKeyed as planKeyed } from './reconcile.js';
 import type { PlanEntry } from './types.js';
 
 //the iterator object @punyts/expression returns for "k,i,v in|for ..."
-interface ExpressionIterator {
+export interface ExpressionIterator {
     lookup: { key: string; index?: string; value?: string };
     keys: string[];
     collection: Record<string, unknown>;
@@ -31,7 +31,7 @@ interface RenderedItem extends ItemEntry {
     nodes: Node[];
 }
 
-const isIterator = (value: unknown): value is ExpressionIterator => {
+export const isIterator = (value: unknown): value is ExpressionIterator => {
     return !!value && typeof value === 'object' && Array.isArray((value as ExpressionIterator).keys);
 };
 
@@ -43,7 +43,7 @@ const isIterator = (value: unknown): value is ExpressionIterator => {
  * @param collectionPath
  * @param filtered
  */
-const getItemPath = (value: unknown, key: string, collectionPath: string | undefined, filtered: boolean) => {
+export const getItemPath = (value: unknown, key: string, collectionPath: string | undefined, filtered: boolean) => {
     const proxyPath = value && typeof value === 'object' ? (value as { __isProxy?: boolean; __path?: string }) : undefined;
     if (proxyPath?.__isProxy && typeof proxyPath.__path === 'string') {
         return normalizePath(proxyPath.__path);

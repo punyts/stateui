@@ -20,7 +20,7 @@ const PATT_HOST = /:host(?![-\w(])/g;
  * Splits CSS into its top-level rules and statements, respecting strings, parentheses and nesting
  * @param css - scanner output (comments already removed)
  */
-const topLevelItems = (css: string): string[] => {
+export const topLevelItems = (css: string): string[] => {
     const items: string[] = [];
     let start = 0;
     let depth = 0;

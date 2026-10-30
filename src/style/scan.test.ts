@@ -287,6 +287,8 @@ describe('scanStyles', () => {
             expectStyleError('@for {{ $.x }} { .x { color: red; } }', /prelude of @for/, 1);
             expectStyleError('a { color: red; }\n@layer l-{{ $.x }} { .x { color: red; } }', /prelude of @layer/, 2);
             expectStyleError('@keyframes spin { @each {{ $k,$i,$v in $.a }} { to { opacity: 1; } } }', /@each is not allowed in @keyframes/, 1);
+            expectStyleError('@each {{ $.a }} { .x { color: red; } }', /exactly one \{\{ <iterator> \}\}/, 1);
+            expectStyleError('@each {{ $k,$i,$v in $.a }} {\n  @media (min-width: {{ $v.w }}px) { .x { color: red; } }\n}', /prelude of @media inside @each/, 2);
         });
 
         it('should reject a block without a selector and text that is not a declaration', () => {

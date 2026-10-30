@@ -1,3 +1,4 @@
+import { PATT_ITERATOR } from '../binding/iterator.js';
 import { StyleCompileError } from '../errors.js';
 import { tokenize, type TokenPart } from '../template/tokenize.js';
 import type { DeclarationBinding, StyleProgram } from './types.js';
@@ -17,8 +18,11 @@ import type { DeclarationBinding, StyleProgram } from './types.js';
  *   the static CSS with everything nested in it and returned as a DynamicRule; {{ }} in any other at-rule prelude
  *   throws.
  * - Iterator-generated rules use the custom at-rule @each {{ $k,$i,$v in $.items }} { <rules> } (the prelude is exactly
- *   one iterator expression; @each never nests in @each). It is returned as an EachRule, never emitted, and its body
- *   may read the iterator locals. The only iterator-rule syntax is @each.
+ *   one iterator expression in the repeat grammar; @each never nests in @each). It is returned as an EachRule, never
+ *   emitted, and its body is rendered once per item: its selectors and declaration values may read the iterator
+ *   locals (.row-{{ $v.id }} { color: {{ $v.color }}; }), declaration values are backed by item-scoped custom
+ *   properties --sui-<classId>-<n>-<position> on the host, and at-rule preludes in it never contain {{ }}. The only
+ *   iterator-rule syntax is @each: {{ }} in any other at-rule prelude throws.
  * - Declaration bindings share one counter n per scan, in source order. Those of an @each body are kept on the body
  *   (they are bound per item); all others are on the top-level program.
  */
@@ -321,7 +325,8 @@ export const scanStyles = (css: string, classId: string): StyleProgram => {
             }
             const prelude = source.slice(match[0].length).trim();
             const iteratorParts = prelude.includes('{{') ? tokenizeValue(prelude, chunk.expressionAt) : [];
-            if (iteratorParts.length !== 1 || typeof iteratorParts[0] === 'string') {
+            const iterator = iteratorParts.length === 1 ? iteratorParts[0] : undefined;
+            if (!iterator || typeof iterator === 'string' || !PATT_ITERATOR.test(iterator.original.trim())) {
                 fail('@each needs exactly one {{ <iterator> }} prelude with nothing around it, e.g. @each {{ $k,$i,$v in $.items }} { … }', chunk.contentAt);
             }
             if (!hasBlock) {
@@ -337,6 +342,9 @@ export const scanStyles = (css: string, classId: string): StyleProgram => {
             }
             if (!DYNAMIC_PRELUDES.has(base) || !hasBlock) {
                 fail(`{{ }} is not allowed in the prelude of @${name}: only @media, @supports, @container and @each accept it`, chunk.expressionAt);
+            }
+            if (context.inEach) {
+                fail(`{{ }} is not allowed in the prelude of @${name} inside @each`, chunk.expressionAt);
             }
             const preludeParts = tokenizeValue(source, chunk.expressionAt);
             context.program.dynamicRules.push({ ancestors: context.ancestors, selectorParts: [], preludeParts, body: body(chunk, depth, context, false) });

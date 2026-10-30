@@ -5,6 +5,22 @@ import type { StyleProgram } from './types.js';
 const STYLE_KIND = 'style';
 
 /**
+ * Sets a custom property on the host to a bound value (null and undefined become ""); an empty value removes it
+ * @param host
+ * @param property - the custom property, -- included
+ * @param value
+ */
+export const applyProperty = (host: HTMLElement, property: string, value: unknown): void => {
+    const text = value === null || value === undefined ? '' : String(value);
+    if (text === '') {
+        host.style.removeProperty(property);
+    }
+    else {
+        host.style.setProperty(property, text);
+    }
+};
+
+/**
  * Binds every {{ }} declaration of a component's styles to a custom property on its host
  * (--sui-<classId>-<n>), set synchronously and before the caller inserts the content. The value is the parts
  * concatenated (null and undefined become ""); an empty value removes the property. Values only ever reach the
@@ -22,15 +38,7 @@ export const attachStyleProperties = (host: HTMLElement, program: StyleProgram, 
             expressions: parts,
             kind: STYLE_KIND,
             nodePath: [],
-            apply: (value) => {
-                const text = value === null || value === undefined ? '' : String(value);
-                if (text === '') {
-                    host.style.removeProperty(property);
-                }
-                else {
-                    host.style.setProperty(property, text);
-                }
-            },
+            apply: (value) => applyProperty(host, property, value),
         });
         binding.update();
         return binding;
