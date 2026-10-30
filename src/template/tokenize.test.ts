@@ -126,14 +126,23 @@ describe('tokenize', () => {
             });
         }
 
-        it('should pass a spaced object literal to the compiler whole', () => {
-            // Act: @punyts/expression rejects {a:1} (it reads object literals as JSON), so the compile error
-            // carrying the full {a:1} text shows the scanner didn't stop at the inner brace
-            const error = captureCompileError(() => tokenize('{{ {a:1} }}'));
+        it('should compile a spaced object literal whole', () => {
+            // Act
+            const result = tokenize('{{ {a:1} }}');
 
             // Assert
-            expect(error.message).toContain('Invalid expression "{a:1}"');
-            expect(error.cause).toBeInstanceOf(Error);
+            const [part] = result.parts;
+            expect(result.isSingleExpression).toBe(true);
+            expect(isCompiled(part) && part.original).toBe('{a:1}');
+            expect(isCompiled(part) && part.execute({})).toEqual({ a: 1 });
+        });
+
+        it('should compile a nested object literal written with "} }"', () => {
+            // Act
+            const [part] = tokenize('{{ {a: $.x, b: {c: 2} } }}').parts;
+
+            // Assert
+            expect(isCompiled(part) && part.execute({ x: 'y' })).toEqual({ a: 'y', b: { c: 2 } });
         });
 
         it('should raise the unbalanced-brace error for an unspaced object literal close', () => {
