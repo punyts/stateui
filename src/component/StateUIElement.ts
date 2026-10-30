@@ -1,6 +1,9 @@
 import { report } from '@punyts/core';
 import { resolveScopePath } from '../scope/path.js';
 import { Scope } from '../scope/Scope.js';
+import { acquireLightStyles } from '../style/light.js';
+import { adoptStyles } from '../style/shared.js';
+import type { StyleProgram } from '../style/types.js';
 import type { CompiledTemplate } from '../template/compile.js';
 import { instantiate, type TemplateInstance } from '../template/instantiate.js';
 import { findParentScope } from './context.js';
@@ -21,6 +24,10 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
     static compiled?: CompiledTemplate;
     static shadowMode: ShadowMode = 'open';
     static controller?: Controller;
+    //c<N>, allocated by defineComponent and used in the class's custom-property names
+    static classId?: string;
+    //the scanned styles option; undefined when the component has no styles
+    static styleProgram?: StyleProgram;
     static observedAttributes = ['state'];
 
     scope?: Scope;
@@ -29,6 +36,7 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
     #disposeController?: () => void;
     #shadowRoot?: ShadowRoot;
     #lightNodes: Node[] = [];
+    #releaseStyles?: () => void;
 
     get element(): Element {
         return this;
@@ -82,7 +90,7 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
      * the insertion, so nested components find it when they connect
      */
     attach(): void {
-        const { compiled, shadowMode } = this.constructor as typeof StateUIElement;
+        const { compiled, shadowMode, styleProgram } = this.constructor as typeof StateUIElement;
         const context = findParentScope(this);
         if (!compiled || !context) {
             return;
@@ -100,13 +108,16 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
         }
         this.#instance = instantiate(compiled, this.scope);
 
+        //styles go in before the content, so it never renders unstyled
         const fragment = this.#instance.fragment;
         if (shadowMode === false) {
+            this.#releaseStyles = styleProgram && acquireLightStyles(this, styleProgram);
             this.#lightNodes = Array.from(fragment.childNodes);
             this.append(fragment);
             return;
         }
         this.#shadowRoot ??= this.attachShadow({ mode: shadowMode });
+        this.#releaseStyles = styleProgram && adoptStyles(this.#shadowRoot, styleProgram);
         this.#shadowRoot.append(fragment);
     }
 
@@ -174,6 +185,8 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
                 report.error(`<${this.localName}> controller dispose failed: ${error instanceof Error ? error.message : String(error)}`, { error });
             }
         }
+        this.#releaseStyles?.();
+        this.#releaseStyles = undefined;
         for (const node of this.#lightNodes) {
             node.parentNode?.removeChild(node);
         }
