@@ -4,6 +4,12 @@ import type { EventListenerFn, Store } from '@punyts/state';
 import { normalizePath } from './path.js';
 import { classifyVariable } from './variables.js';
 
+//the part of a Binding (src/binding/Binding.ts) that Scope.setLocals needs; declared here to keep scope/ free of binding/
+export interface RebindableBinding {
+    readonly disposed: boolean;
+    rebind(): void;
+}
+
 export interface Subscription {
     //removes every listener this subscription registered; safe to call more than once
     dispose(): void;
@@ -101,19 +107,62 @@ export class Scope {
     readonly basePath: string;
     readonly parent?: Scope;
     readonly locals: Map<string, LocalEntry>;
-    //the shallowest ancestor path bindings in this scope subscribe to (used by Scope.subscribe, Story 6a)
-    readonly ancestorFloor: string;
 
+    #ancestorFloor: string;
     #context?: object;
+    //bindings attached in this scope, rebound by setLocals
+    readonly #bindings: Set<RebindableBinding> = new Set();
 
     constructor(store: Store<any>, basePath: string, options: ScopeOptions = {}) {
         this.store = store;
         this.basePath = normalizePath(basePath);
         this.parent = options.parent;
         this.locals = new Map(Object.entries(options.locals ?? {}));
-        this.ancestorFloor = options.ancestorFloor
+        this.#ancestorFloor = options.ancestorFloor
             ?? options.parent?.ancestorFloor
             ?? getFirstSegmentPath(this.basePath);
+    }
+
+    /**
+     * The shallowest ancestor path bindings in this scope subscribe to (used by subscribe). A repeat item scope
+     * uses its item path, and setLocals can move it when the item moves
+     */
+    get ancestorFloor(): string {
+        return this.#ancestorFloor;
+    }
+
+    /**
+     * Registers a binding so setLocals rebinds it. createBinding calls this; dispose unregisters
+     * @param binding
+     */
+    registerBinding(binding: RebindableBinding): void {
+        this.#bindings.add(binding);
+    }
+
+    unregisterBinding(binding: RebindableBinding): void {
+        this.#bindings.delete(binding);
+    }
+
+    /**
+     * Re-targets this scope in place, e.g. when a repeat item's index or store path changes: sets the given locals
+     * (other locals are kept), optionally moves the ancestor floor, then rebinds every live binding registered on
+     * this scope so it subscribes to the new paths and re-renders once
+     * @param locals
+     * @param options
+     */
+    setLocals(locals: Record<string, LocalEntry>, options: { ancestorFloor?: string } = {}): void {
+        for (const [name, local] of Object.entries(locals)) {
+            this.locals.set(name, local);
+        }
+        if (options.ancestorFloor !== undefined) {
+            this.#ancestorFloor = normalizePath(options.ancestorFloor);
+        }
+        //snapshot: a rebind may dispose other bindings in this scope
+        for (const binding of [...this.#bindings]) {
+            if (!binding.disposed) {
+                binding.rebind();
+            }
+        }
     }
 
     /**
