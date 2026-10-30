@@ -56,3 +56,23 @@ export class TemplateCompileError extends StateUIError {
         this.line = details.line;
     }
 }
+
+export interface StyleCompileErrorDetails {
+    //1-based line in the component's styles string
+    line: number;
+    //the underlying error, e.g. from the expression parser
+    cause?: unknown;
+}
+
+/**
+ * The component styles use {{ }} where it is never allowed (a property name, a comment, @keyframes, @font-face,
+ * @import, @charset, @namespace) or are not balanced ({ }, strings, comments, parentheses, {{ }})
+ */
+export class StyleCompileError extends StateUIError {
+    readonly line: number;
+
+    constructor(message: string, details: StyleCompileErrorDetails) {
+        super(`${message} (line ${details.line})`, details.cause === undefined ? undefined : { cause: details.cause });
+        this.line = details.line;
+    }
+}
