@@ -2,7 +2,7 @@ import Expression from '@punyts/expression';
 import type { CompiledExpression } from '@punyts/expression';
 
 /*
- * Characterisation of CompiledExpression.variables (@punyts/expression 1.2.0). Story 5b's classifyVariable maps these
+ * Characterisation of CompiledExpression.variables (@punyts/expression 1.3.0). Story 5b's classifyVariable maps these
  * strings to store subscriptions, so this test is the source of truth for their format. Recorded facts:
  * - entries are the raw, as-written strings ($.a.b, $v.age, $my.variable), not normalised
  * - iterator lookup names ($k, $i, $v) and the sort key are not included; locals used inside filter are
@@ -10,7 +10,8 @@ import type { CompiledExpression } from '@punyts/expression';
  * - a bind function lists its target path before its argument locals: ($v)=>$.select gives $.select, $v
  * - a dynamic indexer yields the indexer variable, then $.a.$every.b, $.a.$every and $.a
  * - a literal indexer is folded into a dotted path ($.a['lit'].b -> $.a.lit.b)
- * - conditionals are comparisons and &&/|| chains; there is no ?: operator (it fails to compile)
+ * - conditionals are comparisons, &&/|| chains and ?: (1.3.0+); a ternary lists its test, then consequent, then
+ *   alternate variables
  */
 const CASES: Readonly<Record<string, readonly string[]>> = Object.freeze({
     '$.a.b': ['$.a.b'],
@@ -22,6 +23,8 @@ const CASES: Readonly<Record<string, readonly string[]>> = Object.freeze({
     '$.a[$.k].b': ['$.k', '$.a.$every.b', '$.a.$every', '$.a'],
     "$.a['lit'].b": ['$.a.lit.b'],
     '$my.variable': ['$my.variable'],
+    '$.a ? $.b : $.c': ['$.a', '$.b', '$.c'],
+    "$.selected ? 'on' : ''": ['$.selected'],
     '$.a == $.b': ['$.a', '$.b'],
     '$.a && $.b || $.c': ['$.a', '$.b', '$.c'],
     "$.flag && 'on' || ''": ['$.flag'],
@@ -37,9 +40,4 @@ describe('CompiledExpression.variables (characterisation)', () => {
             expect(compiled.variables).toEqual(expected);
         });
     }
-
-    it('should not compile a ?: conditional, which the expression language lacks', () => {
-        // Act / Assert: write $.a && $.b || $.c instead (falls through to $.c when $.b is falsy)
-        expect(() => Expression('$.a ? $.b : $.c')).toThrow('Invalid Expression');
-    });
 });

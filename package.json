@@ -32,7 +32,7 @@
     "license": "MIT",
     "dependencies": {
         "@punyts/core": "^1.0.0",
-        "@punyts/expression": "^1.2.0",
+        "@punyts/expression": "^1.3.0",
         "@punyts/state": "^1.1.0"
     },
     "devDependencies": {
