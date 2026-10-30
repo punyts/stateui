@@ -1,11 +1,12 @@
 import { attachAttribute } from './attribute.js';
+import { attachEvent } from './event.js';
 import { registerBindingKind } from './registry.js';
 import { attachText } from './text.js';
 
 /*
  * Built-in kinds. compileTemplate treats them specially: text is used for split text nodes (it never matches an
  * attribute), event handles every on* attribute, and attribute is the fallback for any other attribute holding {{ }}
- * once no other registered kind matched it. text and attribute attach here (E3.2); event gets its attach in E3.3a
+ * once no other registered kind matched it. Each registers its attach step here (text and attribute: E3.2, event: E3.3a)
  */
 export const TEXT_KIND = 'text';
 export const EVENT_KIND = 'event';
@@ -28,8 +29,9 @@ registerBindingKind(EVENT_KIND, {
         kind: EVENT_KIND,
         parts,
         attrName: attr!.name,
-        eventName: attr!.name.slice(2).toLowerCase(),
+        eventName: attr!.name.slice(2),
     }),
+    attach: attachEvent,
 });
 
 registerBindingKind(ATTRIBUTE_KIND, {
