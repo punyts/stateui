@@ -12,7 +12,15 @@ import type { DeclarationBinding, StyleProgram } from './types.js';
  *   it (as in templates).
  * - {{ inside a CSS string literal is still an expression: content: "{{ $.label }}" binds the label, quotes included.
  * - {{ }} is never allowed in a property name, a comment, or anywhere in @keyframes, @font-face, @import, @charset and
- *   @namespace. Selectors and at-rule preludes with {{ }} and @each are not supported until Story 1b.
+ *   @namespace.
+ * - A style rule whose selector contains {{ }}, or an @media, @supports or @container whose prelude does, is left out of
+ *   the static CSS with everything nested in it and returned as a DynamicRule; {{ }} in any other at-rule prelude
+ *   throws.
+ * - Iterator-generated rules use the custom at-rule @each {{ $k,$i,$v in $.items }} { <rules> } (the prelude is exactly
+ *   one iterator expression; @each never nests in @each). It is returned as an EachRule, never emitted, and its body
+ *   may read the iterator locals. The only iterator-rule syntax is @each.
+ * - Declaration bindings share one counter n per scan, in source order. Those of an @each body are kept on the body
+ *   (they are bound per item); all others are on the top-level program.
  */
 
 const PATT_IMPORTANT = /\s*!\s*important\s*$/i;
@@ -20,9 +28,22 @@ const PATT_AT_RULE = /^@(-?[A-Za-z][-\w]*)/;
 const PATT_VENDOR = /^-[a-z]+-/;
 //at-rules whose prelude and body never accept {{ }}
 const NO_EXPRESSIONS: ReadonlySet<string> = new Set(['keyframes', 'font-face', 'import', 'charset', 'namespace']);
-const UNTIL_1B = 'not supported until Story 1b';
+//at-rules whose prelude may contain {{ }} (besides @each)
+const DYNAMIC_PRELUDES: ReadonlySet<string> = new Set(['media', 'supports', 'container']);
 
 type Terminator = '{' | ';' | '}' | '';
+
+interface Context {
+    //the enclosing at-rule that never accepts {{ }}, if any
+    forbidden: string | null;
+    //the static selectors and preludes enclosing this block, relative to program
+    ancestors: string[];
+    //where dynamic rules and @each blocks found here go
+    program: StyleProgram;
+    //where declaration bindings found here go
+    declarations: DeclarationBinding[];
+    inEach: boolean;
+}
 
 interface Chunk {
     //the source text up to the terminator, comments replaced by a space
@@ -99,13 +120,14 @@ const declarationColon = (text: string): number => {
 };
 
 /**
- * Splits component CSS into static CSS and declaration bindings
+ * Splits component CSS into static CSS, declaration bindings, dynamic rules and @each blocks
  * @param css - the component's styles option
  * @param classId - the per-class id allocated by defineComponent (c<N>), used in custom-property names
- * @throws StyleCompileError, with the 1-based line, for {{ }} where it is not allowed and for anything unbalanced
+ * @throws StyleCompileError, with the 1-based line, for {{ }} where it is not allowed, a malformed or nested @each,
+ * and anything unbalanced
  */
 export const scanStyles = (css: string, classId: string): StyleProgram => {
-    const declarations: DeclarationBinding[] = [];
+    let counter = 0;
     let position = 0;
 
     const lineAt = (index: number) => css.slice(0, Math.max(0, index)).split('\n').length;
@@ -223,12 +245,15 @@ export const scanStyles = (css: string, classId: string): StyleProgram => {
         }
     };
 
+    const emptyProgram = (): StyleProgram => ({ staticCss: '', declarations: [], dynamicRules: [], eachRules: [] });
+
     /**
-     * Emits a declaration; a value with {{ }} becomes `<property>: var(--sui-<classId>-<n>)` plus a binding
+     * Emits a declaration; a value with {{ }} becomes `<property>: var(--sui-<classId>-<n>)` plus a binding in the
+     * context's declarations
      * @param chunk
-     * @param forbidden - the enclosing at-rule that never accepts {{ }}, if any
+     * @param context
      */
-    const declaration = (chunk: Chunk, forbidden: string | null): string => {
+    const declaration = (chunk: Chunk, context: Context): string => {
         const source = chunk.text.trim();
         const colon = declarationColon(source);
         if (colon === -1) {
@@ -243,8 +268,8 @@ export const scanStyles = (css: string, classId: string): StyleProgram => {
         if (chunk.expressionAt === -1) {
             return `${source};`;
         }
-        if (forbidden) {
-            fail(`{{ }} is not allowed in @${forbidden}`, chunk.expressionAt);
+        if (context.forbidden) {
+            fail(`{{ }} is not allowed in @${context.forbidden}`, chunk.expressionAt);
         }
 
         let value = source.slice(colon + 1).trim();
@@ -252,15 +277,31 @@ export const scanStyles = (css: string, classId: string): StyleProgram => {
         if (important) {
             value = value.replace(PATT_IMPORTANT, '');
         }
-        const name = `sui-${classId}-${declarations.length}`;
-        declarations.push({ name, parts: tokenizeValue(value, chunk.expressionAt), important });
+        const name = `sui-${classId}-${counter++}`;
+        context.declarations.push({ name, parts: tokenizeValue(value, chunk.expressionAt), important });
         return `${property}: var(--${name})${important ? ' !important' : ''};`;
     };
 
     /**
-     * Emits an at-rule with or without a block
+     * Scans the block a dynamic rule or @each opened into a program of its own
+     * @param chunk - the chunk whose { opened the block
+     * @param depth
+     * @param context - the enclosing context
+     * @param each - true for an @each body, which binds its own declarations
      */
-    const atRule = (chunk: Chunk, depth: number, forbidden: string | null): string => {
+    const body = (chunk: Chunk, depth: number, context: Context, each: boolean): StyleProgram => {
+        const program = emptyProgram();
+        const declarations = each ? program.declarations : context.declarations;
+        const inEach = each || context.inEach;
+        program.staticCss = block(depth + 1, { forbidden: null, ancestors: [], program, declarations, inEach }, chunk.end - 1);
+        return program;
+    };
+
+    /**
+     * Emits an at-rule with or without a block. A dynamic prelude or an @each adds a rule to the context's program
+     * and emits nothing
+     */
+    const atRule = (chunk: Chunk, depth: number, context: Context): string => {
         const source = chunk.text.trim();
         const match = PATT_AT_RULE.exec(source);
         if (!match) {
@@ -268,26 +309,54 @@ export const scanStyles = (css: string, classId: string): StyleProgram => {
         }
         const name = match[1].toLowerCase();
         const base = name.replace(PATT_VENDOR, '');
+        const forbidden = context.forbidden ?? (NO_EXPRESSIONS.has(base) ? name : null);
+        const hasBlock = chunk.terminator === '{';
+
         if (base === 'each') {
-            fail(`@each is ${UNTIL_1B}`, chunk.contentAt);
+            if (context.forbidden) {
+                fail(`@each is not allowed in @${context.forbidden}`, chunk.contentAt);
+            }
+            if (context.inEach) {
+                fail('@each cannot be nested in another @each', chunk.contentAt);
+            }
+            const prelude = source.slice(match[0].length).trim();
+            const iteratorParts = prelude.includes('{{') ? tokenizeValue(prelude, chunk.expressionAt) : [];
+            if (iteratorParts.length !== 1 || typeof iteratorParts[0] === 'string') {
+                fail('@each needs exactly one {{ <iterator> }} prelude with nothing around it, e.g. @each {{ $k,$i,$v in $.items }} { … }', chunk.contentAt);
+            }
+            if (!hasBlock) {
+                fail('@each needs a { … } block', chunk.contentAt);
+            }
+            context.program.eachRules.push({ ancestors: context.ancestors, iteratorParts, body: body(chunk, depth, context, true) });
+            return '';
         }
-        const inner = forbidden ?? (NO_EXPRESSIONS.has(base) ? name : null);
+
         if (chunk.expressionAt !== -1) {
-            fail(inner ? `{{ }} is not allowed in @${inner}` : `{{ }} in an at-rule prelude is ${UNTIL_1B}`, chunk.expressionAt);
+            if (forbidden) {
+                fail(`{{ }} is not allowed in @${forbidden}`, chunk.expressionAt);
+            }
+            if (!DYNAMIC_PRELUDES.has(base) || !hasBlock) {
+                fail(`{{ }} is not allowed in the prelude of @${name}: only @media, @supports, @container and @each accept it`, chunk.expressionAt);
+            }
+            const preludeParts = tokenizeValue(source, chunk.expressionAt);
+            context.program.dynamicRules.push({ ancestors: context.ancestors, selectorParts: [], preludeParts, body: body(chunk, depth, context, false) });
+            return '';
         }
-        if (chunk.terminator !== '{') {
+
+        if (!hasBlock) {
             return `${source};`;
         }
-        return `${source}{${block(depth + 1, inner, chunk.end - 1)}}`;
+        const inner = block(depth + 1, { ...context, forbidden, ancestors: [...context.ancestors, source] }, chunk.end - 1);
+        return `${source}{${inner}}`;
     };
 
     /**
      * Emits the items of one block (or the top level) up to its closing }
      * @param depth - 0 for the top level
-     * @param forbidden - the enclosing at-rule that never accepts {{ }}, if any
+     * @param context
      * @param openAt - index of the { that opened this block, for the unclosed-block error
      */
-    const block = (depth: number, forbidden: string | null, openAt: number): string => {
+    const block = (depth: number, context: Context, openAt: number): string => {
         let output = '';
         for (;;) {
             const chunk = readChunk();
@@ -301,14 +370,14 @@ export const scanStyles = (css: string, classId: string): StyleProgram => {
                     fail('Unbalanced "}": there is no "{" to close', chunk.end - 1);
                 }
                 if (!blank) {
-                    output += chunk.text.trim().startsWith('@') ? atRule(chunk, depth, forbidden) : declaration(chunk, forbidden);
+                    output += chunk.text.trim().startsWith('@') ? atRule(chunk, depth, context) : declaration(chunk, context);
                 }
                 return output;
             }
 
             if (chunk.terminator === ';') {
                 if (!blank) {
-                    output += chunk.text.trim().startsWith('@') ? atRule(chunk, depth, forbidden) : declaration(chunk, forbidden);
+                    output += chunk.text.trim().startsWith('@') ? atRule(chunk, depth, context) : declaration(chunk, context);
                 }
                 continue;
             }
@@ -319,16 +388,22 @@ export const scanStyles = (css: string, classId: string): StyleProgram => {
             }
             const source = chunk.text.trim();
             if (source.startsWith('@')) {
-                output += atRule(chunk, depth, forbidden);
+                output += atRule(chunk, depth, context);
                 continue;
             }
             if (chunk.expressionAt !== -1) {
-                fail(forbidden ? `{{ }} is not allowed in @${forbidden}` : `{{ }} in a selector is ${UNTIL_1B}`, chunk.expressionAt);
+                if (context.forbidden) {
+                    fail(`{{ }} is not allowed in @${context.forbidden}`, chunk.expressionAt);
+                }
+                const selectorParts = tokenizeValue(source, chunk.expressionAt);
+                context.program.dynamicRules.push({ ancestors: context.ancestors, selectorParts, preludeParts: [], body: body(chunk, depth, context, false) });
+                continue;
             }
-            output += `${source}{${block(depth + 1, forbidden, chunk.end - 1)}}`;
+            output += `${source}{${block(depth + 1, { ...context, ancestors: [...context.ancestors, source] }, chunk.end - 1)}}`;
         }
     };
 
-    const staticCss = block(0, null, 0);
-    return { staticCss, declarations, dynamicRules: [], eachRules: [] };
+    const program = emptyProgram();
+    program.staticCss = block(0, { forbidden: null, ancestors: [], program, declarations: program.declarations, inEach: false }, 0);
+    return program;
 };

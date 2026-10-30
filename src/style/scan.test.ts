@@ -149,6 +149,88 @@ describe('scanStyles', () => {
         });
     });
 
+    describe('dynamic rules', () => {
+        it('should extract a top-level dynamic selector with its nested content and bind its declarations', () => {
+            // Act
+            const program = scanStyles('.a { color: red; } .item-{{ $.sel }} { color: {{ $.fg }}; & span { margin: 0; } } .b { color: {{ $.bg }}; }', 'c1');
+
+            // Assert
+            expect(program.staticCss).toBe('.a{color: red;}.b{color: var(--sui-c1-1);}');
+            expect(program.dynamicRules).toHaveLength(1);
+            const [rule] = program.dynamicRules;
+            expect(rule.ancestors).toEqual([]);
+            expect(rule.preludeParts).toEqual([]);
+            expect(evaluateParts(rule.selectorParts, { sel: 'on' })).toBe('.item-on');
+            expect(rule.body.staticCss).toBe('color: var(--sui-c1-0);& span{margin: 0;}');
+            expect(rule.body.declarations).toEqual([]);
+            expect(program.declarations.map(({ name }) => name)).toEqual(['sui-c1-0', 'sui-c1-1']);
+        });
+
+        it('should extract a dynamic selector nested in a static rule and record its static ancestors', () => {
+            // Act
+            const program = scanStyles('.card { color: red; @media print { & .x-{{ $.y }} { color: blue; } } }', 'c1');
+
+            // Assert
+            expect(program.staticCss).toBe('.card{color: red;@media print{}}');
+            expect(program.dynamicRules).toHaveLength(1);
+            expect(program.dynamicRules[0].ancestors).toEqual(['.card', '@media print']);
+            expect(evaluateParts(program.dynamicRules[0].selectorParts, { y: 'z' })).toBe('& .x-z');
+            expect(program.dynamicRules[0].body.staticCss).toBe('color: blue;');
+        });
+
+        it('should extract a dynamic @media prelude, name included, and nested dynamic rules into its body', () => {
+            // Act
+            const program = scanStyles('@media (min-width: {{ $.w }}px) { .a { color: red; } .b-{{ $.c }} { color: blue; } }', 'c1');
+
+            // Assert
+            expect(program.staticCss).toBe('');
+            const [rule] = program.dynamicRules;
+            expect(rule.selectorParts).toEqual([]);
+            expect(evaluateParts(rule.preludeParts, { w: 600 })).toBe('@media (min-width: 600px)');
+            expect(rule.body.staticCss).toBe('.a{color: red;}');
+            expect(rule.body.dynamicRules).toHaveLength(1);
+            expect(evaluateParts(rule.body.dynamicRules[0].selectorParts, { c: 'x' })).toBe('.b-x');
+        });
+
+        it('should accept {{ }} in @supports and @container preludes', () => {
+            // Act
+            const program = scanStyles('@supports ({{ $.p }}: grid) { .a { color: red; } } @container card (min-width: {{ $.w }}px) { .b { color: red; } }', 'c1');
+
+            // Assert
+            expect(program.dynamicRules).toHaveLength(2);
+            expect(program.staticCss).toBe('');
+        });
+    });
+
+    describe('@each', () => {
+        it('should extract @each with its iterator, ancestors and a body that binds its own declarations', () => {
+            // Act
+            const program = scanStyles(`
+                .list { color: {{ $.fg }};
+                    @each {{ $k,$i,$v in $.items }} {
+                        .row-{{ $v.id }} { color: {{ $v.color }}; }
+                        .static { width: {{ $i }}px; }
+                    }
+                }
+                .after { color: {{ $.bg }}; }
+            `, 'c4');
+
+            // Assert
+            expect(normalise(program.staticCss)).toBe(normalise('.list{color: var(--sui-c4-0);}.after{color: var(--sui-c4-3);}'));
+            expect(program.dynamicRules).toEqual([]);
+            expect(program.eachRules).toHaveLength(1);
+            const [each] = program.eachRules;
+            expect(each.ancestors).toEqual(['.list']);
+            expect(each.iteratorParts).toHaveLength(1);
+            expect(typeof each.iteratorParts[0]).not.toBe('string');
+            expect(normalise(each.body.staticCss)).toBe('.static{width: var(--sui-c4-2);}');
+            expect(each.body.declarations.map(({ name }) => name)).toEqual(['sui-c4-1', 'sui-c4-2']);
+            expect(each.body.dynamicRules).toHaveLength(1);
+            expect(each.body.dynamicRules[0].body.staticCss).toBe('color: var(--sui-c4-1);');
+            expect(program.declarations.map(({ name }) => name)).toEqual(['sui-c4-0', 'sui-c4-3']);
+        });
+    });
+
     describe('errors', () => {
         it('should reject {{ }} in a property name', () => {
             expectStyleError('a {\n  {{ $.p }}: red;\n}', /property name/, 2);
@@ -195,11 +277,16 @@ describe('scanStyles', () => {
             expect((caught as StyleCompileError).cause).toBeDefined();
         });
 
-        it('should reject a selector or at-rule prelude with {{ }} and any @each until Story 1b', () => {
-            expectStyleError('.item-{{ $.sel }} { color: red; }', /not supported until Story 1b/, 1);
-            expectStyleError('a {\n  & .x-{{ $.y }} { color: red; }\n}', /not supported until Story 1b/, 2);
-            expectStyleError('@media (min-width: {{ $.w }}px) { a { color: red; } }', /not supported until Story 1b/, 1);
-            expectStyleError('@each {{ $k,$i,$v in $.items }} { .row { color: red; } }', /not supported until Story 1b/, 1);
+        it('should reject a nested or malformed @each and {{ }} in the prelude of other at-rules', () => {
+            expectStyleError('@each {{ $k,$i,$v in $.a }} {\n  @each {{ $k,$i,$w in $.b }} { .x { color: red; } }\n}', /nested in another @each/, 2);
+            expectStyleError('@each {{ $k,$i,$v in $.a }} {\n  .x-{{ $v }} {\n    @each {{ $a,$b,$c in $.b }} { .y { color: red; } }\n  }\n}', /nested in another @each/, 3);
+            expectStyleError('a { color: red; }\n@each .rows { .x { color: red; } }', /exactly one \{\{ <iterator> \}\}/, 2);
+            expectStyleError('@each rows-{{ $k,$i,$v in $.a }} { .x { color: red; } }', /exactly one \{\{ <iterator> \}\}/, 1);
+            expectStyleError('@each {{ $k,$i,$v in $.a }} {{ $.b }} { .x { color: red; } }', /exactly one \{\{ <iterator> \}\}/, 1);
+            expectStyleError('@each {{ $k,$i,$v in $.a }};', /needs a \{ … \} block/, 1);
+            expectStyleError('@for {{ $.x }} { .x { color: red; } }', /prelude of @for/, 1);
+            expectStyleError('a { color: red; }\n@layer l-{{ $.x }} { .x { color: red; } }', /prelude of @layer/, 2);
+            expectStyleError('@keyframes spin { @each {{ $k,$i,$v in $.a }} { to { opacity: 1; } } }', /@each is not allowed in @keyframes/, 1);
         });
 
         it('should reject a block without a selector and text that is not a declaration', () => {
