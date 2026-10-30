@@ -5,6 +5,7 @@ import { classifyVariable } from '../scope/variables.js';
 import { instantiate, type TemplateInstance } from '../template/instantiate.js';
 import { createBinding, type Binding } from './Binding.js';
 import type { RepeatEntryData } from './iterator.js';
+import { reconcileKeyed as planKeyed } from './reconcile.js';
 import type { PlanEntry } from './types.js';
 
 //the iterator object @punyts/expression returns for "k,i,v in|for ..."
@@ -22,6 +23,8 @@ interface ItemEntry {
 }
 
 interface RenderedItem extends ItemEntry {
+    //the key expression's value, for keyed repeats
+    keyValue?: unknown;
     scope: Scope;
     instance: TemplateInstance;
     nodes: Node[];
@@ -92,7 +95,8 @@ export const attachRepeat = (node: Node, entry: PlanEntry, scope: Scope): Bindin
         }
     };
 
-    const createItem = (iterator: ExpressionIterator, itemEntry: ItemEntry): RenderedItem => {
+    //the iterator locals of one entry: $k key, $i position, $v value (by store path when it has one)
+    const localsFor = (iterator: ExpressionIterator, itemEntry: ItemEntry) => {
         const { lookup } = iterator;
         const locals: Record<string, LocalEntry> = { [lookup.key]: { value: itemEntry.key } };
         if (lookup.index) {
@@ -101,9 +105,61 @@ export const attachRepeat = (node: Node, entry: PlanEntry, scope: Scope): Bindin
         if (lookup.value) {
             locals[lookup.value] = itemEntry.path !== undefined ? { path: itemEntry.path } : { value: itemEntry.value };
         }
-        const itemScope = scope.child(locals, itemEntry.path !== undefined ? { ancestorFloor: itemEntry.path } : {});
+        return locals;
+    };
+
+    const createItem = (iterator: ExpressionIterator, itemEntry: ItemEntry, keyValue?: unknown): RenderedItem => {
+        const itemScope = scope.child(localsFor(iterator, itemEntry), itemEntry.path !== undefined ? { ancestorFloor: itemEntry.path } : {});
         const instance = instantiate(data.item, itemScope);
-        return { ...itemEntry, scope: itemScope, instance, nodes: Array.from(instance.fragment.childNodes) };
+        return { ...itemEntry, keyValue, scope: itemScope, instance, nodes: Array.from(instance.fragment.childNodes) };
+    };
+
+    /**
+     * Keyed reconcile: items are matched by the value of the key expression (evaluated in each entry's item scope).
+     * Reused items whose $k, $i or $v changed are retargeted with setLocals; removed keys are disposed; only new items
+     * and reused items that left their relative order are inserted, so the DOM work is minimal
+     * @param iterator
+     * @param entries
+     */
+    const reconcileKeyed = (iterator: ExpressionIterator | undefined, entries: ItemEntry[]) => {
+        const keyValues = entries.map((itemEntry) => {
+            const keyScope = scope.child(localsFor(iterator!, itemEntry));
+            return keyScope.evaluate(data.key!);
+        });
+        const plan = planKeyed(items, keyValues, (item) => item.keyValue);
+
+        for (const item of plan.removed) {
+            disposeItem(item);
+        }
+
+        const next = entries.map((itemEntry, position) => {
+            const reused = plan.matches[position];
+            if (!reused) {
+                return createItem(iterator!, itemEntry, keyValues[position]);
+            }
+            if (reused.key !== itemEntry.key || reused.position !== itemEntry.position || reused.path !== itemEntry.path
+                || (itemEntry.path === undefined && !Object.is(reused.value, itemEntry.value))) {
+                reused.scope.setLocals(localsFor(iterator!, itemEntry), itemEntry.path !== undefined ? { ancestorFloor: itemEntry.path } : {});
+                Object.assign(reused, itemEntry);
+            }
+            return reused;
+        });
+
+        //walk backwards so each item is placed before the one after it; stable items are already in place
+        let reference: Node = node;
+        for (let position = next.length - 1; position >= 0; position--) {
+            const item = next[position];
+            if (!plan.stable.has(item)) {
+                const toInsert = item.nodes.length === 1 ? item.nodes[0] : (() => {
+                    const fragment = node.ownerDocument!.createDocumentFragment();
+                    item.nodes.forEach((itemNode) => fragment.appendChild(itemNode));
+                    return fragment;
+                })();
+                node.parentNode!.insertBefore(toInsert, reference);
+            }
+            reference = item.nodes[0] ?? reference;
+        }
+        items = next;
     };
 
     const reconcile = (value: unknown) => {
@@ -113,6 +169,11 @@ export const attachRepeat = (node: Node, entry: PlanEntry, scope: Scope): Bindin
             const itemValue = iterator!.collection[key];
             return { key, position, value: itemValue, path: getItemPath(itemValue, key, collectionPath, data.filtered) };
         });
+
+        if (data.key) {
+            reconcileKeyed(iterator, entries);
+            return;
+        }
 
         let firstChanged = 0;
         while (firstChanged < items.length && firstChanged < entries.length && canReuse(items[firstChanged], entries[firstChanged])) {
