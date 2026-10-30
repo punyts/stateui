@@ -2,6 +2,7 @@ import { ATTRIBUTE_KIND, EVENT_KIND, TEXT_KIND, isEventAttribute } from '../bind
 import { getBindingKind, getBindingKinds } from '../binding/registry.js';
 import type { BindingKind, PlanEntry } from '../binding/types.js';
 import { TemplateCompileError } from '../errors.js';
+import { compileRepeat } from '../binding/iterator.js';
 import { compileChain } from './chain.js';
 import { parseTemplate } from './parse.js';
 import { tokenize } from './tokenize.js';
@@ -177,9 +178,12 @@ const compileChildren = (parent: Node, parentPath: number[], template: HTMLTempl
         }
         if (node.nodeType === Node.ELEMENT_NODE) {
             //an if/ifelse/else chain becomes one anchor comment (still at this index) plus nested branch templates
-            const chainEntry = compileChain(node as Element, nodePath, compileNodes);
-            if (chainEntry) {
-                plan.push(chainEntry);
+            //a repeat element becomes one anchor comment plus a nested item template (a chain member's repeat is
+            //compiled inside its branch template, so if is evaluated first)
+            const structuralEntry = compileChain(node as Element, nodePath, compileNodes)
+                ?? compileRepeat(node as Element, nodePath, compileNodes);
+            if (structuralEntry) {
+                plan.push(structuralEntry);
                 index++;
                 continue;
             }

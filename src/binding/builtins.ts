@@ -4,6 +4,8 @@ import { attachEvent } from './event.js';
 import { registerBindingKind } from './registry.js';
 import { IF_KIND } from '../template/chain.js';
 import { attachIf } from './if.js';
+import { REPEAT_KIND } from './iterator.js';
+import { attachRepeat } from './repeat.js';
 import { attachText } from './text.js';
 
 /*
@@ -55,4 +57,11 @@ registerBindingKind(IF_KIND, {
     match: () => false,
     compile: ({ nodePath }) => ({ nodePath, kind: IF_KIND, parts: [] }),
     attach: attachIf,
+});
+
+//repeat is compiled structurally by binding/iterator.ts (never by attribute matching); only attach is used
+registerBindingKind(REPEAT_KIND, {
+    match: () => false,
+    compile: ({ nodePath }) => ({ nodePath, kind: REPEAT_KIND, parts: [] }),
+    attach: attachRepeat,
 });
