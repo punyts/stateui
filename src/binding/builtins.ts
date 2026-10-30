@@ -5,6 +5,7 @@ import { registerBindingKind } from './registry.js';
 import { IF_KIND } from '../template/chain.js';
 import { attachIf } from './if.js';
 import { REPEAT_KIND } from './iterator.js';
+import { MIXIN_KIND, attachMixin, compileMixin, matchMixin } from './mixin.js';
 import { attachRepeat } from './repeat.js';
 import { attachText } from './text.js';
 
@@ -64,4 +65,11 @@ registerBindingKind(REPEAT_KIND, {
     match: () => false,
     compile: ({ nodePath }) => ({ nodePath, kind: REPEAT_KIND, parts: [] }),
     attach: attachRepeat,
+});
+
+//matches attributes whose names are registered mixins when the template compiles
+registerBindingKind(MIXIN_KIND, {
+    match: matchMixin,
+    compile: compileMixin,
+    attach: attachMixin,
 });

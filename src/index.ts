@@ -11,3 +11,5 @@ export { defineComponent } from "./component/define.js";
 export type { ComponentOptions } from "./component/define.js";
 export { StateUIElement } from "./component/StateUIElement.js";
 export type { ShadowMode } from "./component/StateUIElement.js";
+export { registerMixin, unregisterMixin } from "./mixin/registry.js";
+export type { Disposer, Mixin } from "./mixin/registry.js";
