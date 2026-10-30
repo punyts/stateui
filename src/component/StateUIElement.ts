@@ -1,4 +1,5 @@
 import { report } from '@punyts/core';
+import { resolveScopePath } from '../scope/path.js';
 import { Scope } from '../scope/Scope.js';
 import type { CompiledTemplate } from '../template/compile.js';
 import { instantiate, type TemplateInstance } from '../template/instantiate.js';
@@ -7,6 +8,8 @@ import type { Controller, ControllerContext, ScopeConsumer, ScopeProvider } from
 import { connectConsumer, disconnectConsumer } from './waiting.js';
 
 export type ShadowMode = 'open' | 'closed' | false;
+
+const STATE_ATTRIBUTE = 'state';
 
 /**
  * Base class of every element defineComponent creates. On connect it scopes itself from the nearest mounted root or
@@ -21,6 +24,7 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
     static observedAttributes = ['state'];
 
     scope?: Scope;
+    #attached = false;
     #instance?: TemplateInstance;
     #disposeController?: () => void;
     #shadowRoot?: ShadowRoot;
@@ -38,8 +42,39 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
         disconnectConsumer(this);
     }
 
-    attributeChangedCallback(): void {
-        //re-scoping on a state change arrives with the state attribute (E5.3)
+    /**
+     * A state change while attached re-scopes synchronously: the current instance is disposed and a new one attached
+     * against the new path. Before attach, the attribute is simply read when attach runs
+     * @param name
+     * @param oldValue
+     * @param newValue
+     */
+    attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
+        if (name !== STATE_ATTRIBUTE || oldValue === newValue || !this.#attached) {
+            return;
+        }
+        this.detach();
+        this.attach();
+    }
+
+    /**
+     * Resolves this component's base path: its state attribute against the parent's base path (absolute, .child or
+     * ..sibling), or the parent's base path unchanged when there is no state attribute. An invalid path is reported
+     * and yields undefined, so the component renders nothing instead of throwing out of a lifecycle callback
+     * @param parentBasePath
+     */
+    #resolveBasePath(parentBasePath: string): string | undefined {
+        const state = this.getAttribute(STATE_ATTRIBUTE);
+        if (state === null) {
+            return parentBasePath;
+        }
+        try {
+            return resolveScopePath(parentBasePath, state);
+        }
+        catch (error) {
+            report.error(`<${this.localName}> state="${state}" is not a valid path: ${error instanceof Error ? error.message : String(error)}`, { state });
+            return undefined;
+        }
     }
 
     /**
@@ -52,8 +87,13 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
         if (!compiled || !context) {
             return;
         }
+        this.#attached = true;
 
-        this.scope = new Scope(context.store, context.basePath);
+        const basePath = this.#resolveBasePath(context.basePath);
+        if (basePath === undefined) {
+            return;
+        }
+        this.scope = new Scope(context.store, basePath);
         //the controller runs before instantiate, so its members are locals when bindings attach
         if (!this.#runController(this.scope)) {
             return;
@@ -121,6 +161,7 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
      * Disposes every binding and removes the nodes this instance added, so a reconnect renders from scratch
      */
     detach(): void {
+        this.#attached = false;
         this.#instance?.dispose();
         this.#instance = undefined;
         const disposeController = this.#disposeController;
