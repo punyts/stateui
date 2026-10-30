@@ -2,6 +2,7 @@ import { ATTRIBUTE_KIND, EVENT_KIND, TEXT_KIND, isEventAttribute } from '../bind
 import { getBindingKind, getBindingKinds } from '../binding/registry.js';
 import type { BindingKind, PlanEntry } from '../binding/types.js';
 import { TemplateCompileError } from '../errors.js';
+import { compileChain } from './chain.js';
 import { parseTemplate } from './parse.js';
 import { tokenize } from './tokenize.js';
 
@@ -175,6 +176,13 @@ const compileChildren = (parent: Node, parentPath: number[], template: HTMLTempl
             continue;
         }
         if (node.nodeType === Node.ELEMENT_NODE) {
+            //an if/ifelse/else chain becomes one anchor comment (still at this index) plus nested branch templates
+            const chainEntry = compileChain(node as Element, nodePath, compileNodes);
+            if (chainEntry) {
+                plan.push(chainEntry);
+                index++;
+                continue;
+            }
             compileAttributes(node as Element, nodePath, template, plan);
             compileChildren(node, nodePath, template, plan);
         }
@@ -183,11 +191,26 @@ const compileChildren = (parent: Node, parentPath: number[], template: HTMLTempl
 };
 
 /**
+ * Compiles nodes that already belong to the HTML document (moved into a new template) into a CompiledTemplate.
+ * Used for whole templates and for the nested branch templates of structural bindings; not cached
+ * @param nodes
+ */
+export const compileNodes = (nodes: readonly Node[]): CompiledTemplate => {
+    const template = document.createElement('template');
+    for (const node of nodes) {
+        template.content.appendChild(node);
+    }
+    const plan: PlanEntry[] = [];
+    compileChildren(template.content, [], template, plan);
+    return { template, plan };
+};
+
+/**
  * Compiles a template string once into a <template> whose content is the static DOM and a binding plan of
  * node paths; later calls with the same string return the identical cached object
  * @param source
  * @throws TemplateParseError for malformed XHTML
- * @throws TemplateCompileError for script/style, {{ }} in names or in state, or a malformed on* attribute
+ * @throws TemplateCompileError for script/style, {{ }} in names or in state, or a malformed on* attribute or chain
  */
 export const compileTemplate = (source: string): CompiledTemplate => {
     const cached = compiledTemplates.get(source);
@@ -196,16 +219,8 @@ export const compileTemplate = (source: string): CompiledTemplate => {
     }
 
     assertNoExpressionInNames(source);
-    const template = document.createElement('template');
-    for (const element of parseTemplate(source)) {
-        //the parsed nodes live in an XML document; import them into the HTML document
-        template.content.appendChild(document.importNode(element, true));
-    }
-
-    const plan: PlanEntry[] = [];
-    compileChildren(template.content, [], template, plan);
-
-    const compiled: CompiledTemplate = { template, plan };
+    //the parsed nodes live in an XML document; import them into the HTML document
+    const compiled = compileNodes(parseTemplate(source).map((element) => document.importNode(element, true)));
     compiledTemplates.set(source, compiled);
     return compiled;
 };

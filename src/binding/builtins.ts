@@ -2,6 +2,8 @@ import { attachAttribute } from './attribute.js';
 import { BIND_ATTRIBUTE, BIND_KIND, attachBind, compileBind } from './bind.js';
 import { attachEvent } from './event.js';
 import { registerBindingKind } from './registry.js';
+import { IF_KIND } from '../template/chain.js';
+import { attachIf } from './if.js';
 import { attachText } from './text.js';
 
 /*
@@ -46,4 +48,11 @@ registerBindingKind(BIND_KIND, {
     compile: compileBind,
     removeAttribute: true,
     attach: attachBind,
+});
+
+//if chains are compiled structurally by template/chain.ts (never by attribute matching); only attach is used
+registerBindingKind(IF_KIND, {
+    match: () => false,
+    compile: ({ nodePath }) => ({ nodePath, kind: IF_KIND, parts: [] }),
+    attach: attachIf,
 });
