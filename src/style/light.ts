@@ -73,7 +73,7 @@ const topLevelItems = (css: string): string[] => {
  * Rewrites :host to & and :host(<sel>) to &<sel> outside string literals
  * @param css
  */
-const rewriteHost = (css: string): string => css
+export const rewriteHost = (css: string): string => css
     .split(PATT_STRING)
     .map((segment, index) => index % 2 === 1 ? segment : segment.replace(PATT_HOST_FUNCTION, '&$1').replace(PATT_HOST, '&'))
     .join('');
@@ -96,6 +96,17 @@ export const wrapLightCss = (staticCss: string, tag: string): string => {
 };
 
 /**
+ * Where a light-DOM element's <style> elements go: document.head for the document, its shadow root otherwise, null
+ * when it is not in either
+ * @param element
+ */
+export const styleContainer = (element: Element): ParentNode | null => {
+    const root = element.getRootNode();
+    const document = element.ownerDocument;
+    return root === document ? document.head : root instanceof ShadowRoot ? root : null;
+};
+
+/**
  * Shares one <style data-sui-style="<tag>"> per owning root (document.head for the document, the shadow root
  * otherwise) between every light-DOM instance of a component: counted up here, and removed by the returned function
  * once the last instance in that root releases it. A program without static CSS adds nothing
@@ -105,7 +116,7 @@ export const wrapLightCss = (staticCss: string, tag: string): string => {
 export const acquireLightStyles = (element: Element, program: StyleProgram): (() => void) => {
     const root = element.getRootNode();
     const document = element.ownerDocument;
-    const container: ParentNode | null = root === document ? document.head : root instanceof ShadowRoot ? root : null;
+    const container = styleContainer(element);
     if (!program.staticCss || !container) {
         return () => undefined;
     }

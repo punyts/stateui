@@ -1,6 +1,7 @@
 import { report } from '@punyts/core';
 import { resolveScopePath } from '../scope/path.js';
 import { Scope } from '../scope/Scope.js';
+import { attachLightDynamicRules, attachShadowDynamicRules } from '../style/dynamic.js';
 import { acquireLightStyles } from '../style/light.js';
 import { attachStyleProperties } from '../style/properties.js';
 import { adoptStyles } from '../style/shared.js';
@@ -39,6 +40,7 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
     #lightNodes: Node[] = [];
     #releaseStyles?: () => void;
     #disposeStyleProperties?: () => void;
+    #disposeDynamicRules?: () => void;
 
     get element(): Element {
         return this;
@@ -117,12 +119,14 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
         const fragment = this.#instance.fragment;
         if (shadowMode === false) {
             this.#releaseStyles = styleProgram && acquireLightStyles(this, styleProgram);
+            this.#disposeDynamicRules = styleProgram && attachLightDynamicRules(this, styleProgram, this.scope);
             this.#lightNodes = Array.from(fragment.childNodes);
             this.append(fragment);
             return;
         }
         this.#shadowRoot ??= this.attachShadow({ mode: shadowMode });
         this.#releaseStyles = styleProgram && adoptStyles(this.#shadowRoot, styleProgram);
+        this.#disposeDynamicRules = styleProgram && attachShadowDynamicRules(this.#shadowRoot, styleProgram, this.scope);
         this.#shadowRoot.append(fragment);
     }
 
@@ -192,6 +196,8 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
         }
         this.#disposeStyleProperties?.();
         this.#disposeStyleProperties = undefined;
+        this.#disposeDynamicRules?.();
+        this.#disposeDynamicRules = undefined;
         this.#releaseStyles?.();
         this.#releaseStyles = undefined;
         for (const node of this.#lightNodes) {
