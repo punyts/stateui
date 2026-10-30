@@ -1,4 +1,5 @@
 import { attachAttribute } from './attribute.js';
+import { BIND_ATTRIBUTE, BIND_KIND, attachBind, compileBind } from './bind.js';
 import { attachEvent } from './event.js';
 import { registerBindingKind } from './registry.js';
 import { attachText } from './text.js';
@@ -38,4 +39,11 @@ registerBindingKind(ATTRIBUTE_KIND, {
     match: (attr) => attr.value.includes('{{'),
     compile: ({ nodePath, parts, attr }) => ({ nodePath, kind: ATTRIBUTE_KIND, parts, attrName: attr!.name }),
     attach: attachAttribute,
+});
+
+registerBindingKind(BIND_KIND, {
+    match: (attr) => attr.name === BIND_ATTRIBUTE,
+    compile: compileBind,
+    removeAttribute: true,
+    attach: attachBind,
 });

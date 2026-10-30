@@ -44,61 +44,88 @@ const assertNoExpressionInNames = (source: string) => {
 };
 
 /**
- * Finds the kind for an attribute: registered kinds in registration order (event first among the built-ins), with
- * the generic attribute kind as the fallback, so kinds registered later (if, repeat, mixin) win over it
+ * Finds a specific kind for an attribute: registered kinds in registration order (event first among the built-ins),
+ * excluding text and the generic attribute fallback, so kinds registered later (bind, if, repeat, mixin) are asked
+ * before the fallback ever is
  * @param attr
  * @param element
  */
-const findAttributeKind = (attr: Attr, element: Element): [string, BindingKind] | undefined => {
+const findSpecificKind = (attr: Attr, element: Element): BindingKind | undefined => {
     for (const [name, kind] of getBindingKinds()) {
-        if (name === TEXT_KIND || name === ATTRIBUTE_KIND) {
-            continue;
-        }
-        if (kind.match(attr, element)) {
-            return [name, kind];
+        if (name !== TEXT_KIND && name !== ATTRIBUTE_KIND && kind.match(attr, element)) {
+            return kind;
         }
     }
-    const fallback = getBindingKind(ATTRIBUTE_KIND)!;
-    return fallback.match(attr, element) ? [ATTRIBUTE_KIND, fallback] : undefined;
+    return undefined;
 };
 
 /**
- * Records plan entries for an element's attributes and removes every {{ }} and on* attribute from the content
+ * Checks the attribute rules that hold whatever kind handles it
+ * @param attr
+ * @param nodePath
+ */
+const validateAttribute = (attr: Attr, nodePath: number[]) => {
+    const hasExpression = attr.value.includes('{{');
+    if (attr.name === STATE_ATTRIBUTE && hasExpression) {
+        throw new TemplateCompileError(
+            `{{ }} is not allowed in the state attribute: it takes a literal path (${attr.value})`,
+            { nodePath }
+        );
+    }
+    if (isEventAttribute(attr.name) && !(hasExpression && tokenize(attr.value).isSingleExpression)) {
+        throw new TemplateCompileError(
+            `${attr.name}="${attr.value}" must be exactly one {{ }} expression; inline handler text is not allowed`,
+            { nodePath }
+        );
+    }
+};
+
+/**
+ * Records plan entries for an element's attributes and removes every {{ }} and on* attribute from the content.
+ * Two passes: specific kinds first (event, bind, later if/repeat/mixin), which may claim sibling attributes, then the
+ * generic attribute kind for whatever {{ }} attributes are left and unclaimed
  * @param element
  * @param nodePath
  * @param template
  * @param plan
  */
 const compileAttributes = (element: Element, nodePath: number[], template: HTMLTemplateElement, plan: PlanEntry[]) => {
-    //snapshot: attributes are removed while iterating
-    for (const attr of Array.from(element.attributes)) {
+    //snapshots: attributes are removed while iterating, and kinds may need a sibling's original value
+    const attrs = Array.from(element.attributes);
+    const attributes = attrs.map(({ name, value }) => ({ name, value }));
+    const handled: Set<Attr> = new Set();
+    const claimed: Set<string> = new Set();
+
+    const compileWith = (kind: BindingKind, attr: Attr) => {
         const hasExpression = attr.value.includes('{{');
-
-        if (attr.name === STATE_ATTRIBUTE && hasExpression) {
-            throw new TemplateCompileError(
-                `{{ }} is not allowed in the state attribute: it takes a literal path (${attr.value})`,
-                { nodePath }
-            );
-        }
-
-        const isEvent = isEventAttribute(attr.name);
         const parts = hasExpression ? tokenize(attr.value).parts : [attr.value];
-        if (isEvent && !(hasExpression && tokenize(attr.value).isSingleExpression)) {
-            throw new TemplateCompileError(
-                `${attr.name}="${attr.value}" must be exactly one {{ }} expression; inline handler text is not allowed`,
-                { nodePath }
-            );
+        const entry = kind.compile({ node: element, element, attr, nodePath, parts, template, attributes });
+        plan.push(entry);
+        for (const name of entry.claims ?? []) {
+            claimed.add(name);
         }
-
-        const found = findAttributeKind(attr, element);
-        if (found) {
-            const [, kind] = found;
-            plan.push(kind.compile({ node: element, element, attr, nodePath, parts, template }));
+        if (kind.removeAttribute) {
+            element.removeAttribute(attr.name);
         }
+    };
 
+    for (const attr of attrs) {
+        validateAttribute(attr, nodePath);
+        const kind = findSpecificKind(attr, element);
+        if (kind) {
+            compileWith(kind, attr);
+            handled.add(attr);
+        }
+    }
+
+    const fallback = getBindingKind(ATTRIBUTE_KIND)!;
+    for (const attr of attrs) {
+        if (!handled.has(attr) && !claimed.has(attr.name) && fallback.match(attr, element)) {
+            compileWith(fallback, attr);
+        }
         //never leave placeholder text or handler source in the content: a clone entering a live document must not
         //fetch src="{{ ... }}" or build an inline handler from it
-        if (hasExpression || isEvent) {
+        if (attr.value.includes('{{') || isEventAttribute(attr.name)) {
             element.removeAttribute(attr.name);
         }
     }
@@ -122,7 +149,7 @@ const compileText = (text: Text, parentPath: number[], index: number, template: 
         const node = text.ownerDocument.createTextNode(typeof part === 'string' ? part : '');
         parent.insertBefore(node, text);
         if (typeof part !== 'string') {
-            plan.push(textKind.compile({ node, nodePath: [...parentPath, index + offset], parts: [part], template }));
+            plan.push(textKind.compile({ node, nodePath: [...parentPath, index + offset], parts: [part], template, attributes: [] }));
         }
     });
     parent.removeChild(text);

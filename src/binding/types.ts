@@ -12,6 +12,8 @@ export interface PlanEntry {
     parts: TokenPart[];
     //the attribute the entry came from (removed from the template content when it held {{ }} or was on*)
     attrName?: string;
+    //sibling attribute names this entry takes over: compile records no attribute entry for them
+    claims?: string[];
     //kind-specific data
     [key: string]: unknown;
 }
@@ -27,12 +29,16 @@ export interface CompileContext {
     nodePath: number[];
     parts: TokenPart[];
     template: HTMLTemplateElement;
+    //the element's attributes as written, before compile removed any (empty for text entries)
+    attributes: ReadonlyArray<{ name: string; value: string }>;
 }
 
 export interface BindingKind {
     //true when this kind handles the attribute; never called for text nodes
     match: (attr: Attr, element: Element) => boolean;
     compile: (context: CompileContext) => PlanEntry;
+    //remove the matched attribute from the template content even when it holds no {{ }} (e.g. bind="value")
+    removeAttribute?: boolean;
     //turns a plan entry into a live binding on the cloned node; registered by the story that implements the kind
     attach?: (node: Node, entry: PlanEntry, scope: Scope) => Binding;
 }
