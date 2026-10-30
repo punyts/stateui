@@ -2,6 +2,7 @@ import { report } from '@punyts/core';
 import { resolveScopePath } from '../scope/path.js';
 import { Scope } from '../scope/Scope.js';
 import { acquireLightStyles } from '../style/light.js';
+import { attachStyleProperties } from '../style/properties.js';
 import { adoptStyles } from '../style/shared.js';
 import type { StyleProgram } from '../style/types.js';
 import type { CompiledTemplate } from '../template/compile.js';
@@ -37,6 +38,7 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
     #shadowRoot?: ShadowRoot;
     #lightNodes: Node[] = [];
     #releaseStyles?: () => void;
+    #disposeStyleProperties?: () => void;
 
     get element(): Element {
         return this;
@@ -108,7 +110,10 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
         }
         this.#instance = instantiate(compiled, this.scope);
 
-        //styles go in before the content, so it never renders unstyled
+        //styles and their custom properties go in before the content, so it never renders unstyled
+        if (styleProgram?.declarations.length) {
+            this.#disposeStyleProperties = attachStyleProperties(this, styleProgram, this.scope);
+        }
         const fragment = this.#instance.fragment;
         if (shadowMode === false) {
             this.#releaseStyles = styleProgram && acquireLightStyles(this, styleProgram);
@@ -185,6 +190,8 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
                 report.error(`<${this.localName}> controller dispose failed: ${error instanceof Error ? error.message : String(error)}`, { error });
             }
         }
+        this.#disposeStyleProperties?.();
+        this.#disposeStyleProperties = undefined;
         this.#releaseStyles?.();
         this.#releaseStyles = undefined;
         for (const node of this.#lightNodes) {
