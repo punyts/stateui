@@ -1,3 +1,4 @@
+import { report } from '@punyts/core';
 import type { EventListenerFn } from '@punyts/state';
 import { normalizePath } from '../scope/path.js';
 import type { LocalEntry, Scope } from '../scope/Scope.js';
@@ -115,6 +116,38 @@ export const attachRepeat = (node: Node, entry: PlanEntry, scope: Scope): Bindin
     };
 
     /**
+     * Duplicate keys: the first entry owns a key and later duplicates get a fresh item on every reconcile. A real
+     * duplicate (two different objects with the same key) is reported once per reconcile. Array mutators emit once per
+     * index, so mid-call the same object can sit at two indexes; that transient duplicate is not reported (detected with
+     * store.isRefMatch: both entries are the same raw object)
+     * @param entries
+     * @param keyValues
+     */
+    const reportDuplicateKeys = (entries: ItemEntry[], keyValues: unknown[]) => {
+        const firstByKey = new Map<unknown, ItemEntry>();
+        const duplicates = new Set<unknown>();
+        keyValues.forEach((keyValue, position) => {
+            const first = firstByKey.get(keyValue);
+            if (!first) {
+                firstByKey.set(keyValue, entries[position]);
+                return;
+            }
+            const entry = entries[position];
+            const sameObject = first.path !== undefined && scope.store.isRefMatch(first.path, entry.value);
+            if (!sameObject) {
+                duplicates.add(keyValue);
+            }
+        });
+        if (duplicates.size) {
+            report.error(`[repeat at node path ${JSON.stringify(entry.nodePath)}] duplicate key ${[...duplicates].map((key) => JSON.stringify(key)).join(', ')}: the first item owns it, later ones are recreated on every update`, {
+                kind: entry.kind,
+                nodePath: entry.nodePath,
+                keys: [...duplicates],
+            });
+        }
+    };
+
+    /**
      * Keyed reconcile: items are matched by the value of the key expression (evaluated in each entry's item scope).
      * Reused items whose $k, $i or $v changed are retargeted with setLocals; removed keys are disposed; only new items
      * and reused items that left their relative order are inserted, so the DOM work is minimal
@@ -126,6 +159,7 @@ export const attachRepeat = (node: Node, entry: PlanEntry, scope: Scope): Bindin
             const keyScope = scope.child(localsFor(iterator!, itemEntry));
             return keyScope.evaluate(data.key!);
         });
+        reportDuplicateKeys(entries, keyValues);
         const plan = planKeyed(items, keyValues, (item) => item.keyValue);
 
         for (const item of plan.removed) {
