@@ -6,7 +6,7 @@ export { parseTemplate, PARSE_HINT } from "./template/parse.js";
 export { tokenize } from "./template/tokenize.js";
 export type { TokenPart, TokenizeResult } from "./template/tokenize.js";
 export { mount, unmount, findParentScope } from "./component/context.js";
-export type { MountContext, ScopeConsumer, ScopeProvider } from "./component/types.js";
+export type { Controller, ControllerContext, ControllerResult, MountContext, ScopeConsumer, ScopeProvider } from "./component/types.js";
 export { defineComponent } from "./component/define.js";
 export type { ComponentOptions } from "./component/define.js";
 export { StateUIElement } from "./component/StateUIElement.js";

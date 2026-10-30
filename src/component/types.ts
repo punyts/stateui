@@ -25,3 +25,26 @@ export interface ScopeConsumer {
     attach(): void;
     detach(): void;
 }
+
+/**
+ * What a component's controller receives. state is a getter that calls store.get(basePath) on every access, so it
+ * stays correct after Store.replace() swaps the object under the path
+ */
+export interface ControllerContext {
+    readonly element: Element;
+    readonly store: Store<any>;
+    readonly basePath: string;
+    readonly scope: Scope;
+    readonly state: unknown;
+}
+
+/**
+ * What a controller returns: every member except dispose becomes a scope local by its exact name
+ * (e.g. select, used as ($v)=>$.select); dispose runs once when the component detaches
+ */
+export interface ControllerResult {
+    dispose?: () => void;
+    [member: string]: unknown;
+}
+
+export type Controller = (context: ControllerContext) => ControllerResult | void;
