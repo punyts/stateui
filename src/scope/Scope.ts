@@ -2,7 +2,7 @@ import { report } from '@punyts/core';
 import type { CompiledExpression } from '@punyts/expression';
 import type { EventListenerFn, Store } from '@punyts/state';
 import { normalizePath } from './path.js';
-import { classifyVariable } from './variables.js';
+import { bindEverySegments, classifyVariable, countEverySegments, readVariable } from './variables.js';
 
 //the part of a Binding (src/binding/Binding.ts) that Scope.setLocals needs; declared here to keep scope/ free of binding/
 export interface RebindableBinding {
@@ -269,51 +269,103 @@ export class Scope {
      * scope is based on) re-evaluates the binding. Locals without a store path add nothing.
      *
      * A dynamic variable ($.a[$.k].b gives $.a.$every.b) is never registered literally, because EventManager treats
-     * $every as a wildcard: its prefix ($.a) and that prefix's ancestors are subscribed, and the indexer ($.k) is
-     * subscribed through its own variable entry. Limitation: a change nested inside the dynamically-indexed entry
-     * ($.a.x.b changing while $.k is "x") does not notify unless the entry itself, or an ancestor, is replaced
+     * $every as a wildcard. Its prefix ($.a) and that prefix's ancestors are subscribed, and so is the entry the
+     * indexer values currently select ($.a.x.b and its ancestors while $.k is "x"). The indexer variables are listed
+     * before the dynamic variable, so they are the nearest preceding variables, one per $every segment; the variables
+     * that follow in the same group are prefixes of the first one and use its first indexers. When the indexers can't
+     * be matched or hold no usable key, only the prefix is subscribed.
+     *
+     * Also returns the paths of the indexer variables, which subscribe() watches to move the entry subscription
      * @param variables
      */
     #getSubscriptionPaths(variables: string[]) {
         const paths: Set<string> = new Set();
+        const indexerPaths: Set<string> = new Set();
+        const addVariable = (target: Set<string>, variable: string) => {
+            const classified = classifyVariable(variable, this);
+            if (classified?.kind === 'store') {
+                addWithAncestors(target, truncateAtWildcard(classified.path), this.ancestorFloor);
+            }
+        };
+
+        let preceding: string[] = [];
+        let group: { first: string; indexers: string[] } | undefined;
         for (const variable of variables) {
             const classified = classifyVariable(variable, this);
-            if (!classified || classified.kind === 'local') {
+            if (classified?.kind !== 'dynamic') {
+                preceding.push(variable);
+                addVariable(paths, variable);
                 continue;
             }
-            const path = classified.kind === 'dynamic'
-                ? classified.prefix
-                : classified.path;
-            addWithAncestors(paths, truncateAtWildcard(path), this.ancestorFloor);
+
+            addWithAncestors(paths, truncateAtWildcard(classified.prefix), this.ancestorFloor);
+            const count = countEverySegments(variable);
+            let indexers: string[] | undefined;
+            if (group && (group.first === variable || group.first.startsWith(`${variable}.`)) && count <= group.indexers.length) {
+                indexers = group.indexers.slice(0, count);
+            }
+            else if (preceding.length >= count) {
+                indexers = preceding.slice(preceding.length - count);
+                group = { first: variable, indexers };
+                preceding = [];
+            }
+            if (!indexers) {
+                continue;
+            }
+
+            for (const indexer of indexers) {
+                addVariable(indexerPaths, indexer);
+            }
+            const entry = bindEverySegments(variable, indexers.map((indexer) => readVariable(indexer, this)), this);
+            if (entry) {
+                addWithAncestors(paths, truncateAtWildcard(entry), this.ancestorFloor);
+            }
         }
-        return paths;
+        return { paths, indexerPaths };
     }
 
     /**
      * Listens to every store path the variables depend on. Each distinct path is registered once with
-     * store.on(path, listener), because EventManager.removeListener only removes the first occurrence
+     * store.on(path, listener), because EventManager.removeListener only removes the first occurrence.
+     * When a variable has a dynamic indexer, an internal listener on the indexer variables moves the entry
+     * subscription whenever an indexer value changes, so no wildcard is ever registered
      * @param variables - a CompiledExpression's variables
      * @param listener
      */
     subscribe(variables: string[], listener: EventListenerFn): Subscription {
         let registered: Set<string> = new Set();
+        let registeredIndexers: Set<string> = new Set();
+        let currentVariables = variables;
         let disposed = false;
 
-        const apply = (next: Set<string>) => {
-            for (const path of registered) {
+        const sync = (current: Set<string>, next: Set<string>, fn: EventListenerFn) => {
+            for (const path of current) {
                 if (!next.has(path)) {
-                    this.store.off(path, listener);
+                    this.store.off(path, fn);
                 }
             }
             for (const path of next) {
-                if (!registered.has(path)) {
-                    this.store.on(path, listener);
+                if (!current.has(path)) {
+                    this.store.on(path, fn);
                 }
             }
-            registered = next;
+            return next;
         };
 
-        apply(this.#getSubscriptionPaths(variables));
+        //runs when an indexer value may have changed; the binding's own listener re-evaluates independently
+        const moveEntries: EventListenerFn = () => {
+            if (!disposed) {
+                refresh();
+            }
+        };
+
+        const refresh = () => {
+            const next = this.#getSubscriptionPaths(currentVariables);
+            registered = sync(registered, next.paths, listener);
+            registeredIndexers = sync(registeredIndexers, next.indexerPaths, moveEntries);
+        };
+
+        refresh();
 
         return {
             dispose: () => {
@@ -321,13 +373,15 @@ export class Scope {
                     return;
                 }
                 disposed = true;
-                apply(new Set());
+                registered = sync(registered, new Set(), listener);
+                registeredIndexers = sync(registeredIndexers, new Set(), moveEntries);
             },
             resubscribe: (nextVariables: string[]) => {
                 if (disposed) {
                     return;
                 }
-                apply(this.#getSubscriptionPaths(nextVariables));
+                currentVariables = nextVariables;
+                refresh();
             },
         };
     }

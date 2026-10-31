@@ -247,8 +247,11 @@ layout reads, async code, `eval` and `innerHTML`.
   fixed in `@punyts/state` 1.1.0; no follow-up limitation remains.
 - **Multiple emits.** One store call can notify a binding more than once (`delete('a.b')` emits `$.a.b` and then
   `$.a`); the equality check keeps the DOM from being written twice.
-- **Dynamic indexers.** `$.a[$.k].b` subscribes to `$.a`, its ancestors and `$.k`. It updates when `$.k` changes or the
-  entry (or an ancestor) is replaced, but not when only `$.a.<k>.b` changes inside the entry.
+- **Dynamic indexers.** `$.a[$.k].b` subscribes to `$.a`, its ancestors, `$.k` and the entry `$.k` currently selects
+  (`$.a.<k>.b` and `$.a.<k>`), and moves that subscription when `$.k` changes. No wildcard listener is registered.
+  An indexer value that isn't a plain string or number segment (empty, or containing `.`, `$`, `*` or brackets)
+  selects no entry, and the binding then updates only when `$.a`, an ancestor or `$.k` changes. An indexer that is
+  itself computed (`$.a[$.k + 1]`, `$.a[$.m[$.k]]`) is not matched to its entry either.
 - **Object-valued properties.** A property binding holding an object (`item="{{ $.item }}"`) doesn't re-run when only
   fields inside the object change, because the store emits only on the changed leaves. It re-runs when the object or
   an ancestor is replaced or deleted.

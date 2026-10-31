@@ -70,16 +70,35 @@ describe('Scope.subscribe', () => {
             expect(registeredPaths(spies.on)).toEqual(['$.a.b', '$.a', '$.a.b.c']);
         });
 
-        it('should subscribe a dynamic variable through its prefix and indexer, never literally', () => {
+        it('should subscribe a dynamic variable through its prefix, indexer and selected entry, never literally', () => {
+            // Arrange
+            const store = createStore<any>({ a: { x: { b: 1 } }, k: 'x' });
+            const spies = spyOnSubscriptions(store);
+            const listener = vi.fn();
+
+            // Act
+            new Scope(store, '$').subscribe(Expression('$.a[$.k].b').variables, listener);
+
+            // Assert
+            const paths = spies.on.mock.calls.filter(([, fn]) => fn === listener).map(([path]) => path);
+            expect(paths).toEqual(['$.k', '$.a', '$.a.x.b', '$.a.x']);
+            for (const path of registeredPaths(spies.on)) {
+                expect(path).toMatch(SAFE_PATH);
+            }
+        });
+
+        it('should subscribe only the prefix and indexer when the indexer has no usable key', () => {
             // Arrange
             const store = createMatrixStore();
             const spies = spyOnSubscriptions(store);
+            const listener = vi.fn();
 
             // Act
-            new Scope(store, '$').subscribe(Expression('$.a[$.k].b').variables, vi.fn());
+            new Scope(store, '$').subscribe(Expression('$.a[$.k].b').variables, listener);
 
             // Assert
-            expect(registeredPaths(spies.on)).toEqual(['$.k', '$.a']);
+            const paths = spies.on.mock.calls.filter(([, fn]) => fn === listener).map(([path]) => path);
+            expect(paths).toEqual(['$.k', '$.a']);
         });
 
         it('should only ever register wildcard-free paths across a range of expressions', () => {

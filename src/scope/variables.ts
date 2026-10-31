@@ -105,3 +105,68 @@ export const classifyVariable = (variable: string, scope: Scope): VariableClass 
         return null;
     }
 };
+
+/**
+ * Counts the $every segments of a dynamic variable ($.a.$every.b.$every.c -> 2)
+ * @param variable
+ */
+export const countEverySegments = (variable: string) => {
+    return variable.split(EVERY_SEGMENT).length - 1;
+};
+
+//an indexer value that can stand in for one path segment without being read as a wildcard or a nested path
+const PATT_SAFE_KEY = /^[^.$*[\]\s]+$/;
+const PATT_ACCESSOR = /[.[\]]+/;
+
+/**
+ * Replaces each $every segment of a dynamic variable with the matching indexer value, in order, and classifies the
+ * resulting concrete variable. Returns null when a value can't be a path segment or the result isn't a store path
+ * @param variable - a dynamic variable ($.a.$every.b)
+ * @param keys - one indexer value per $every segment
+ * @param scope
+ */
+export const bindEverySegments = (variable: string, keys: unknown[], scope: Scope): string | null => {
+    const parts = variable.split(EVERY_SEGMENT);
+    let concrete = parts[0];
+    for (let index = 1; index < parts.length; index++) {
+        const key = keys[index - 1];
+        const text = typeof key === 'string' || typeof key === 'number' ? String(key) : '';
+        if (!PATT_SAFE_KEY.test(text)) {
+            return null;
+        }
+        concrete = `${concrete}.${text}${parts[index]}`;
+    }
+    const classified = classifyVariable(concrete, scope);
+    return classified?.kind === 'store' ? classified.path : null;
+};
+
+/**
+ * Reads the current value of an indexer variable: a store path is read fresh, a local without a store path is
+ * read from its value. Returns undefined for anything that can't be read
+ * @param variable
+ * @param scope
+ */
+export const readVariable = (variable: string, scope: Scope): unknown => {
+    const classified = classifyVariable(variable, scope);
+    if (!classified || classified.kind === 'dynamic') {
+        return undefined;
+    }
+    if (classified.kind === 'store') {
+        return scope.store.get(classified.path);
+    }
+    for (const candidate of [variable, variable.replace(PATT_STRIP_ROOT, '')]) {
+        const first = candidate.match(PATT_FIRST_SEGMENT)?.[0];
+        const local = first ? scope.findLocal(first) : undefined;
+        if (first && local) {
+            let value: unknown = local.value;
+            for (const segment of candidate.slice(first.length).split(PATT_ACCESSOR).filter(Boolean)) {
+                if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
+                    return undefined;
+                }
+                value = (value as Record<string, unknown>)[segment];
+            }
+            return value;
+        }
+    }
+    return undefined;
+};
