@@ -1,8 +1,10 @@
+import type { CompiledExpression } from '@punyts/expression';
 import { ATTRIBUTE_KIND, EVENT_KIND, TEXT_KIND, isEventAttribute } from '../binding/builtins.js';
 import { getBindingKind, getBindingKinds } from '../binding/registry.js';
 import type { BindingKind, PlanEntry } from '../binding/types.js';
 import { TemplateCompileError } from '../errors.js';
 import { compileRepeat } from '../binding/iterator.js';
+import { STATE_ATTRIBUTE, isLocalExpression } from '../binding/state.js';
 import { compileChain } from './chain.js';
 import { parseTemplate } from './parse.js';
 import { tokenize } from './tokenize.js';
@@ -21,7 +23,6 @@ const compiledTemplates: Map<string, CompiledTemplate> = new Map();
 //a start or end tag, with quoted attribute values kept whole so a ">" inside a value doesn't end the tag
 const PATT_TAG = /<(?:"[^"]*"|'[^']*'|[^'">])*>/g;
 const PATT_QUOTED = /"[^"]*"|'[^']*'/g;
-const STATE_ATTRIBUTE = 'state';
 
 /**
  * Throws a TemplateCompileError when {{ }} appears in an element or attribute name. The XML parser would reject the
@@ -62,15 +63,24 @@ const findSpecificKind = (attr: Attr, element: Element): BindingKind | undefined
 };
 
 /**
+ * True when a state attribute value is exactly one {{ }} holding one local variable name
+ * @param value
+ */
+const isStateLocal = (value: string) => {
+    const { parts, isSingleExpression } = tokenize(value);
+    return isSingleExpression && isLocalExpression(parts[0] as CompiledExpression);
+};
+
+/**
  * Checks the attribute rules that hold whatever kind handles it
  * @param attr
  * @param nodePath
  */
 const validateAttribute = (attr: Attr, nodePath: number[]) => {
     const hasExpression = attr.value.includes('{{');
-    if (attr.name === STATE_ATTRIBUTE && hasExpression) {
+    if (attr.name === STATE_ATTRIBUTE && hasExpression && !isStateLocal(attr.value)) {
         throw new TemplateCompileError(
-            `{{ }} is not allowed in the state attribute: it takes a literal path (${attr.value})`,
+            `{{ }} is not allowed in the state attribute except one iterator local such as {{ $v }}: it takes a literal path (${attr.value})`,
             { nodePath }
         );
     }

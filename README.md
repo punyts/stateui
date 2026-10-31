@@ -55,7 +55,7 @@ in the store (see [The `state` attribute](#the-state-attribute)).
 | Event | `<button onclick="{{ $.save }}">` | One native listener; a bind function such as `{{ ($v) => $.select }}` is called with its bound arguments, then the event. |
 | Conditionals | `<b if="{{ $.a }}">a</b><i ifelse="{{ $.b }}">b</i><u else="">c</u>` | Adjacent siblings form one chain; only the first true branch is in the DOM. |
 | Repeat | `<li repeat="{{ $k,$i,$v in $.items }}">{{ $v.name }}</li>` | `$k` key, `$i` position, `$v` value. `for` instead of `in` counts: `{{ $k,$i for $.count }}`. |
-| Keyed repeat | `repeat="{{ $k,$i,$v in $.items }}" key="{{ $v.id }}"` | Items are moved, not re-rendered, when the order changes. |
+| Keyed repeat | `repeat="{{ $k,$i,$v in $.items }}" key="{{ $v.id }}"` | Items are moved, not re-rendered, when the order changes. `in` also iterates a plain object map (`$k` the key, `$v` the entry, insertion order): `repeat="{{ $k,$i,$v in $.map }}" key="{{ $k }}"`. |
 | Sort and filter | `repeat="{{ $k,$i,$v in $.items sort $v.price desc filter $v.stock > 0 }}"` | `sort` takes a field name (`sort name`) or an iterator-local path (`sort $v.price`), then optionally `asc` (default) or `desc`. |
 | Two-way binding | `<input value="{{ $.name }}" bind="value" />` | `bind` names a sibling `{{ }}` attribute: `value`, `checked` or `valueAsNumber`. Input and change events write the variable's store path. |
 | Mixin | `<div tooltip="{{ $.help }}">` | A registered attribute directive; see [Mixins](#mixins). |
@@ -116,7 +116,11 @@ still-connected components wait for a root again. Removing a component from the 
 | `.owner` | a child of the parent's base path |
 | `..sibling` | a sibling: one dot more goes one level up |
 
-The value is literal only: `state="{{ … }}"` throws `TemplateCompileError`. Changing the attribute re-scopes the
+The value is a literal path, with one exception: inside a `repeat`, `state="{{ $v }}"` (the whole value is one iterator
+local) scopes the component to that entry's absolute store path, e.g. `$.map.k42` or `$.list.3`. A row that moves
+(keyed repeat) is re-scoped to its new path. The local must have a store path (an entry of a store collection in a
+repeat without `filter` on primitives); otherwise the error is reported and the component renders nothing. Any other
+`{{ }}` in `state`, including `{{ $v.owner }}`, throws `TemplateCompileError`. Changing the attribute re-scopes the
 component synchronously. An invalid path is reported and the component renders nothing.
 
 ## Styles

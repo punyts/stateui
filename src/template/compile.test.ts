@@ -109,6 +109,31 @@ describe('compileTemplate', () => {
         expect((error as TemplateCompileError).nodePath).toEqual([0, 0]);
     });
 
+    const badStates = Object.freeze({
+        'a path expression': '<x-card state="{{ $v.owner }}"></x-card>',
+        'the base object': '<x-card state="{{ $ }}"></x-card>',
+        'a call': '<x-card state="{{ $v() }}"></x-card>',
+        'mixed text': '<x-card state="a{{ $v }}"></x-card>',
+        'two expressions': '<x-card state="{{ $v }}{{ $k }}"></x-card>',
+    });
+    for (const [name, source] of Object.entries(badStates)) {
+        it(`should throw TemplateCompileError for ${name} in a state attribute`, () => {
+            // Act / Assert
+            expect(() => compileTemplate(`<div>${source}</div>`)).toThrow(TemplateCompileError);
+        });
+    }
+
+    it('should accept a state attribute that is exactly one local and compile it as a state entry', () => {
+        // Act
+        const { plan, template } = compileTemplate('<div><x-card state="{{ $v }}"></x-card></div>');
+
+        // Assert
+        expect(plan).toHaveLength(1);
+        expect(plan[0].kind).toBe('state');
+        expect(plan[0].nodePath).toEqual([0, 0]);
+        expect((template.content.firstChild!.firstChild as Element).hasAttribute('state')).toBe(false);
+    });
+
     const badNames = Object.freeze({
         'an element name': '<div>\n<x-{{ $.tag }}></x-{{ $.tag }}></div>',
         'an attribute name': '<div>\n<p data-{{ $.k }}="1"></p></div>',

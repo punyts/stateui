@@ -7,6 +7,7 @@ import { attachIf } from './if.js';
 import { REPEAT_KIND } from './iterator.js';
 import { MIXIN_KIND, attachMixin, compileMixin, matchMixin } from './mixin.js';
 import { attachRepeat } from './repeat.js';
+import { STATE_ATTRIBUTE, STATE_KIND, attachState } from './state.js';
 import { attachText } from './text.js';
 
 /*
@@ -44,6 +45,13 @@ registerBindingKind(ATTRIBUTE_KIND, {
     match: (attr) => attr.value.includes('{{'),
     compile: ({ nodePath, parts, attr }) => ({ nodePath, kind: ATTRIBUTE_KIND, parts, attrName: attr!.name }),
     attach: attachAttribute,
+});
+
+//state="{{ $v }}": compile accepts only a single local variable, so no other {{ }} reaches this kind
+registerBindingKind(STATE_KIND, {
+    match: (attr) => attr.name === STATE_ATTRIBUTE && attr.value.includes('{{'),
+    compile: ({ nodePath, parts, attr }) => ({ nodePath, kind: STATE_KIND, parts, attrName: attr!.name }),
+    attach: attachState,
 });
 
 registerBindingKind(BIND_KIND, {
