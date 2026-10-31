@@ -13,3 +13,6 @@ export { StateUIElement } from "./component/StateUIElement.js";
 export type { ShadowMode } from "./component/StateUIElement.js";
 export { registerMixin, unregisterMixin } from "./mixin/registry.js";
 export type { Disposer, Mixin } from "./mixin/registry.js";
+export { SuiNode } from "./node/SuiNode.js";
+export { setNodeResolver } from "./node/options.js";
+export type { NodeResolver } from "./node/options.js";

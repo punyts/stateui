@@ -123,6 +123,29 @@ repeat without `filter` on primitives); otherwise the error is reported and the 
 `{{ }}` in `state`, including `{{ $v.owner }}`, throws `TemplateCompileError`. Changing the attribute re-scopes the
 component synchronously. An invalid path is reported and the component renders nothing.
 
+## `<sui-node>`: render the component a node names
+
+`<sui-node state="$.nodes.a">` renders whatever the node at its `state` path names. It reads `component` at that path,
+asks the node resolver for a tag, and creates that element as its only child with the same absolute `state` path, so
+the child scopes exactly as if a template had named it. When `component` changes the child is removed (and disposed)
+and a new one is created; a change to any other property is left to the child's own bindings, and nothing is
+re-rendered. `<sui-node>` is defined by the library and sets `display: contents`, so the element it creates is the grid
+or flex item of the container that holds it. Stylesheets select it as `[layout=region] > sui-node > [region=nw]`.
+It nests inside component templates (slots, keyed-map `repeat` with `state="{{ $v }}"`), and removing it disposes the
+child.
+
+The component library is not known to StateUI: the application registers the resolver once.
+
+```ts
+import { setNodeResolver } from '@punyts/stateui';
+
+setNodeResolver((name) => name === 'button' ? 'ui-button' : undefined); // name => tag | undefined
+```
+
+A path with no node, a node with no `component`, or a name the resolver does not know renders nothing and reports
+`SUI-NODE-MISSING` through the `@punyts/core` reporter, with the state path. `setNodeResolver(undefined)` removes the
+resolver. A node already rendered keeps its element until its `component` changes or it is re-attached.
+
 ## Styles
 
 The `styles` option takes component CSS with native nesting. In shadow DOM every instance of a class shares one

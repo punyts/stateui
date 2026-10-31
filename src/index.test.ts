@@ -13,7 +13,7 @@ describe('stateui', () => {
         const types: Array<ControllerContext | MountContext | ScopeConsumer | ScopeProvider | undefined> = [undefined];
 
         // Assert
-        for (const name of ['defineComponent', 'mount', 'unmount', 'StateUIElement', 'StateUIError', 'TemplateParseError', 'TemplateCompileError'] as const) {
+        for (const name of ['defineComponent', 'mount', 'unmount', 'StateUIElement', 'SuiNode', 'setNodeResolver', 'StateUIError', 'TemplateParseError', 'TemplateCompileError'] as const) {
             expect(stateui[name]).toBeTypeOf('function');
         }
         expect(options.tag).toBe('x-a');
