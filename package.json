@@ -1,6 +1,6 @@
 {
     "name": "@punyts/stateui",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "publishConfig": {
         "access": "public"
     },
@@ -32,7 +32,7 @@
     "license": "MIT",
     "dependencies": {
         "@punyts/core": "^1.0.0",
-        "@punyts/expression": "^1.3.0",
+        "@punyts/expression": "^1.4.0",
         "@punyts/state": "^1.2.0"
     },
     "devDependencies": {
