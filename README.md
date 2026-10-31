@@ -146,6 +146,42 @@ A path with no node, a node with no `component`, or a name the resolver does not
 `SUI-NODE-MISSING` through the `@punyts/core` reporter, with the state path. `setNodeResolver(undefined)` removes the
 resolver. A node already rendered keeps its element until its `component` changes or it is re-attached.
 
+### Placement, layout, theme and reflected properties
+
+`<sui-node>` also writes the node's presentation onto the element it creates. Every write is synchronous and
+write-only, follows later changes in place, and removes the attribute or property when its key goes away.
+
+| Node value | Written as |
+|------------|------------|
+| `placement: { region: 'nw', col: 1, rowSpan: 2 }` | attributes `region="nw"`, `col="1"`, `row-span="2"` on the created element. Keys starting with `_` (content, such as a tab title) are skipped; an object value is ignored |
+| `layout: { type: 'grid', collapseBelow: 'md' }` | `layout="grid"`, `layout-collapse-below="md"` and `--layout-collapse-below: md` on the element marked `layout-host` in the created element's shadow root, or on the created element when it has none (`--layout-*` only for string and number settings). In an XHTML template write `<div layout-host="" />` |
+| `theme: { color: { accent: { base: '#2f6f4f' } } }` | one custom property per leaf on the created element, named and valued by the theme mapper |
+| the properties `reflect(component)` lists | host attributes on the created element, camelCase to kebab-case (`textRole` becomes `text-role`) |
+
+Attribute values: a string or number is written as text, `true` as `""`, and `false`, `null` and `undefined` remove the
+attribute. Properties that `reflect` does not list are never written.
+
+The application registers the theme mapper and the reflect list once, so StateUI knows neither a custom property prefix
+nor a token reference syntax.
+
+```ts
+import { setNodeOptions } from '@punyts/stateui';
+
+setNodeOptions({
+    theme: {
+        property: (path) => `--ui-${path.join('-')}`,               // ['color', 'accent', 'base'] => '--ui-color-accent-base'
+        value: (text) => text.replace(/\{([^}]+)\}/g, (_m, ref) => `var(--ui-${ref.replace(/\./g, '-')})`),
+    },
+    reflect: (componentName) => ['tone', 'size', 'textRole'],       // componentName => node properties
+});
+```
+
+`property` may return `undefined` to skip a leaf. StateUI validates nothing about which layout settings, tokens or
+articulation values exist. It writes only safe names: attribute names of lower-case letters, digits and `-` (starting
+with a letter), custom property names of `--` followed by letters, digits and `-`, and reflected property names of
+letters and digits. Any other name is ignored and reported as `SUI-NODE-NAME`. Options apply to nodes rendered after
+`setNodeOptions`; `setNodeOptions(undefined)` removes them.
+
 ## Styles
 
 The `styles` option takes component CSS with native nesting. In shadow DOM every instance of a class shares one

@@ -2,7 +2,7 @@ import { report } from '@punyts/core';
 import { createStore } from '@punyts/state';
 import { mount, unmount } from '../component/context.js';
 import { defineComponent } from '../component/define.js';
-import { setNodeResolver } from './options.js';
+import { setNodeOptions, setNodeResolver } from './options.js';
 import { SuiNode } from './SuiNode.js';
 
 let counter = 0;
@@ -30,6 +30,7 @@ describe('<sui-node> in Chromium', () => {
 
     afterEach(() => {
         setNodeResolver(undefined);
+        setNodeOptions(undefined);
         errorSpy.mockRestore();
         for (const host of Array.from(document.body.children)) {
             unmount(host);
@@ -237,5 +238,226 @@ describe('<sui-node> in Chromium', () => {
         expect(getComputedStyle(node).display).toBe('contents');
         expect(rect.left - gridRect.left).toBe(100);
         expect(rect.width).toBe(200);
+    });
+
+    describe('presentation', () => {
+        const plain = (state: Record<string, unknown>, template = '<b>x</b>') => {
+            const tag = nextTag('p');
+            defineComponent({ tag, template });
+            setNodeResolver(() => tag);
+            const root = createRoot({ n: { component: 'c', ...state } });
+            const node = addNode(root.host, 'n');
+            return { ...root, node, child: node.firstElementChild as HTMLElement };
+        };
+
+        it('should write placement as kebab-case attributes, skip _ keys and ignore objects', () => {
+            // Arrange
+            const placement = { region: 'nw', col: 1, rowSpan: 2, span: true, _tab: 'Tab', nested: { a: 1 }, gone: false };
+
+            // Act
+            const { child } = plain({ placement });
+
+            // Assert
+            expect(child.getAttribute('region')).toBe('nw');
+            expect(child.getAttribute('col')).toBe('1');
+            expect(child.getAttribute('row-span')).toBe('2');
+            expect(child.getAttribute('span')).toBe('');
+            expect(child.hasAttribute('_tab')).toBe(false);
+            expect(child.hasAttribute('nested')).toBe(false);
+            expect(child.hasAttribute('gone')).toBe(false);
+            expect(errorSpy).not.toHaveBeenCalled();
+        });
+
+        it('should update placement in place and remove an attribute when its key goes away or becomes null', () => {
+            // Arrange
+            const { store, child } = plain({ placement: { region: 'nw', col: 1, span: 2 } });
+
+            // Act
+            store.set('n.placement.region', 'se');
+
+            // Assert
+            expect(child.getAttribute('region')).toBe('se');
+
+            // Act
+            store.set('n.placement.col', null);
+
+            // Assert
+            expect(child.hasAttribute('col')).toBe(false);
+            store.delete('n.placement.span');
+            expect(child.hasAttribute('span')).toBe(false);
+            expect(child.hasAttribute('span')).toBe(false);
+            store.delete('n.placement');
+            expect(child.hasAttribute('region')).toBe(false);
+        });
+
+        it('should write layout as attributes and custom properties on the layout-host in the shadow root', () => {
+            // Arrange / Act
+            const { child } = plain({ layout: { type: 'grid', collapseBelow: 'md', columns: 3 } }, '<div layout-host="" />');
+            const layoutHost = child.shadowRoot!.querySelector('[layout-host]') as HTMLElement;
+
+            // Assert
+            expect(layoutHost.getAttribute('layout')).toBe('grid');
+            expect(layoutHost.getAttribute('layout-collapse-below')).toBe('md');
+            expect(layoutHost.style.getPropertyValue('--layout-collapse-below')).toBe('md');
+            expect(layoutHost.getAttribute('layout-columns')).toBe('3');
+            expect(layoutHost.style.getPropertyValue('--layout-columns')).toBe('3');
+            expect(child.hasAttribute('layout')).toBe(false);
+        });
+
+        it('should write layout on the created element when it has no layout-host', () => {
+            // Arrange / Act
+            const { child } = plain({ layout: { type: 'row', gap: 'md' } });
+
+            // Assert
+            expect(child.getAttribute('layout')).toBe('row');
+            expect(child.getAttribute('layout-gap')).toBe('md');
+            expect(child.style.getPropertyValue('--layout-gap')).toBe('md');
+        });
+
+        it('should update layout in place and remove settings that disappear', () => {
+            // Arrange
+            const { store, child } = plain({ layout: { type: 'grid', columns: 3 } });
+
+            // Act
+            store.set('n.layout.type', 'row');
+            store.delete('n.layout.columns');
+
+            // Assert
+            expect(child.getAttribute('layout')).toBe('row');
+            expect(child.hasAttribute('layout-columns')).toBe(false);
+            expect(child.style.getPropertyValue('--layout-columns')).toBe('');
+            store.delete('n.layout');
+            expect(child.hasAttribute('layout')).toBe(false);
+        });
+
+        it('should flatten theme through the mapper, calling it for nested paths, and update and remove leaves', () => {
+            // Arrange
+            const property = vi.fn((path: string[]) => `--ui-${path.join('-')}`);
+            const value = vi.fn((text: string) => text.replace(/\{([^}]+)\}/g, (_match, ref: string) => `var(--ui-${ref.replace(/\./g, '-')})`));
+            setNodeOptions({ theme: { property, value } });
+
+            // Act
+            const { store, child } = plain({ theme: { color: { accent: { base: '#2f6f4f', soft: '{color.success.soft}' } }, button: { radius: '4px' } } });
+
+            // Assert
+            expect(property).toHaveBeenCalledWith(['color', 'accent', 'base']);
+            expect(child.style.getPropertyValue('--ui-color-accent-base')).toBe('#2f6f4f');
+            expect(child.style.getPropertyValue('--ui-color-accent-soft')).toBe('var(--ui-color-success-soft)');
+            expect(child.style.getPropertyValue('--ui-button-radius')).toBe('4px');
+
+            // Act
+            store.set('n.theme.color.accent.base', '#000000');
+            store.delete('n.theme.button');
+
+            // Assert
+            expect(child.style.getPropertyValue('--ui-color-accent-base')).toBe('#000000');
+            expect(child.style.getPropertyValue('--ui-button-radius')).toBe('');
+        });
+
+        it('should not write theme without a mapper', () => {
+            // Arrange / Act
+            const { child } = plain({ theme: { color: { x: '1' } } });
+
+            // Assert
+            expect(child.getAttribute('style')).toBeNull();
+        });
+
+        it('should skip theme leaves the mapper declines', () => {
+            // Arrange
+            setNodeOptions({ theme: { property: (path) => path[0] === 'skip' ? undefined : `--t-${path.join('-')}`, value: (text) => text } });
+
+            // Act
+            const { child } = plain({ theme: { skip: { a: '1' }, keep: { b: '2' } } });
+
+            // Assert
+            expect(child.style.getPropertyValue('--t-keep-b')).toBe('2');
+            expect(child.style.getPropertyValue('--t-skip-a')).toBe('');
+        });
+
+        it('should reflect only the listed properties, with boolean, number and removal rules', () => {
+            // Arrange
+            const reflect = vi.fn(() => ['textRole', 'tone', 'busy', 'size', 'off']);
+            setNodeOptions({ reflect });
+
+            // Act
+            const { store, child } = plain({ textRole: 'heading', tone: 'danger', busy: true, size: 2, off: false, secret: { a: 1 }, label: 'no' });
+
+            // Assert
+            expect(reflect).toHaveBeenCalledWith('c');
+            expect(child.getAttribute('text-role')).toBe('heading');
+            expect(child.getAttribute('tone')).toBe('danger');
+            expect(child.getAttribute('busy')).toBe('');
+            expect(child.getAttribute('size')).toBe('2');
+            expect(child.hasAttribute('off')).toBe(false);
+            expect(child.hasAttribute('secret')).toBe(false);
+            expect(child.hasAttribute('label')).toBe(false);
+
+            // Act
+            store.set('n.tone', 'info');
+            store.set('n.busy', false);
+            store.set('n.textRole', null);
+
+            // Assert
+            expect(child.getAttribute('tone')).toBe('info');
+            expect(child.hasAttribute('busy')).toBe(false);
+            expect(child.hasAttribute('text-role')).toBe(false);
+        });
+
+        it('should ignore unsafe names and report them', () => {
+            // Arrange
+            setNodeOptions({ reflect: () => ['ok', 'bad name', 'x"y'] });
+
+            // Act
+            const { child } = plain({ ok: 'v', placement: { 'a b': 1, region: 'n', 'x=y': 2 }, layout: { type: 'grid', 'bad key': 1 } });
+
+            // Assert
+            expect(child.getAttribute('ok')).toBe('v');
+            expect(child.getAttribute('region')).toBe('n');
+            expect(child.getAttribute('layout')).toBe('grid');
+            const codes = errorSpy.mock.calls.map((call) => (call[1] as { code?: string }).code);
+            expect(codes.filter((code) => code === 'SUI-NODE-NAME')).toHaveLength(5);
+            expect(Array.from(child.attributes).map((attribute) => attribute.name).sort()).toEqual(['layout', 'ok', 'region', 'state']);
+        });
+
+        it('should ignore a theme property name that is not a custom property', () => {
+            // Arrange
+            setNodeOptions({ theme: { property: () => 'color', value: (text) => text } });
+
+            // Act
+            const { child } = plain({ theme: { a: 'red' } });
+
+            // Assert
+            expect(child.style.color).toBe('');
+            expect(errorSpy).toHaveBeenCalledTimes(1);
+        });
+
+        it('should rebind to the new child when component changes', () => {
+            // Arrange
+            setNodeOptions({ reflect: (name) => name === 'c' ? ['tone'] : [] });
+            const { store, node, child } = plain({ tone: 'danger', placement: { region: 'nw' } });
+
+            // Act
+            store.set('n.component', 'd');
+            const next = node.firstElementChild as HTMLElement;
+            store.set('n.placement.region', 'se');
+
+            // Assert
+            expect(next).not.toBe(child);
+            expect(next.hasAttribute('tone')).toBe(false);
+            expect(next.getAttribute('region')).toBe('se');
+            expect(child.hasAttribute('region')).toBe(false);
+        });
+
+        it('should stop updating once the node is removed', () => {
+            // Arrange
+            const { store, node, child } = plain({ placement: { region: 'nw' } });
+
+            // Act
+            node.remove();
+            store.set('n.placement.region', 'se');
+
+            // Assert
+            expect(child.hasAttribute('region')).toBe(false);
+        });
     });
 });
