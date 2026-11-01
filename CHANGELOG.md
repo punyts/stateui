@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- An expression evaluation reads its scope's base object from the store once, however many names it looks up there.
+
 ## 0.2.0
 - Fix (AMM-1808): `<sui-node>` removes its child without a `SUI-NODE-MISSING` report when the node it rendered is deleted (the value at its path is gone). A node that never rendered, a node that exists with a missing or empty `component`, a resolver failure and an unknown component are still reported.
 - **Dynamic indexers.** `$.a[$.k].b` subscribes to the entry `$.k` currently selects and moves the subscription when `$.k` changes, so a change inside the entry updates the binding; no wildcard listener is added (AMM-1645).

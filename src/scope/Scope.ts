@@ -110,6 +110,8 @@ export class Scope {
 
     #ancestorFloor: string;
     #context?: object;
+    //while an expression runs: the base object once it has been read, or undefined before that
+    #evaluation?: { base?: { value: unknown } };
     //bindings attached in this scope, rebound by setLocals
     readonly #bindings: Set<RebindableBinding> = new Set();
 
@@ -223,7 +225,7 @@ export class Scope {
                 if (local) {
                     return this.#readLocal(local);
                 }
-                const base: unknown = this.store.get(this.basePath);
+                const base = this.#readBase();
                 return isObjectLike(base)
                     ? (base as Record<string, unknown>)[prop]
                     : undefined;
@@ -235,7 +237,7 @@ export class Scope {
                 if (this.findLocal(prop)) {
                     return true;
                 }
-                const base: unknown = this.store.get(this.basePath);
+                const base = this.#readBase();
                 return isObjectLike(base) && prop in base;
             },
             set: (_target, prop, value, receiver) => {
@@ -394,6 +396,26 @@ export class Scope {
     evaluate(compiled: CompiledExpression): unknown {
         //the context reads locals and the store on every access, so one per scope is enough
         this.#context ??= this.createContext();
-        return compiled.execute(this.#context, { quiet: true });
+        const outer = this.#evaluation;
+        this.#evaluation = {};
+        try {
+            return compiled.execute(this.#context, { quiet: true });
+        }
+        finally {
+            this.#evaluation = outer;
+        }
+    }
+
+    /**
+     * The object the scope is based on. An expression cannot write state and runs to its end without yielding, so
+     * the store does not change while it runs: the base is read once per evaluation rather than once per name looked up
+     */
+    #readBase(): unknown {
+        const evaluation = this.#evaluation;
+        if (!evaluation) {
+            return this.store.get(this.basePath);
+        }
+        evaluation.base ??= { value: this.store.get(this.basePath) };
+        return evaluation.base.value;
     }
 }
