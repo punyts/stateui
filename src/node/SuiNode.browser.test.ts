@@ -141,6 +141,66 @@ describe('<sui-node> in Chromium', () => {
         expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('mystery'), expect.objectContaining({ code: 'SUI-NODE-MISSING', state: '$.n' }));
     });
 
+    it('should remove the child without a report when the rendered node is deleted', () => {
+        // Arrange
+        const label = nextTag('label');
+        defineComponent({ tag: label, template: '<b>{{ $.text }}</b>' });
+        setNodeResolver((name) => name === 'label' ? label : undefined);
+        const { store, host } = createRoot({ nodes: { a: { component: 'label', text: 'hi' } } });
+        const node = addNode(host, 'nodes.a');
+        expect(node.firstElementChild).not.toBeNull();
+
+        // Act
+        store.delete('$.nodes.a');
+
+        // Assert
+        expect(node.firstElementChild).toBeNull();
+        expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('should report SUI-NODE-MISSING when a rendered node still exists but loses its component', () => {
+        // Arrange
+        const label = nextTag('label');
+        defineComponent({ tag: label, template: '<b>{{ $.text }}</b>' });
+        setNodeResolver((name) => name === 'label' ? label : undefined);
+        const { store, host } = createRoot({ nodes: { a: { component: 'label', text: 'hi' } } });
+        const node = addNode(host, 'nodes.a');
+
+        // Act
+        store.delete('$.nodes.a.component');
+
+        // Assert
+        expect(node.firstElementChild).toBeNull();
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('SUI-NODE-MISSING'), expect.objectContaining({ code: 'SUI-NODE-MISSING', state: '$.nodes.a' }));
+    });
+
+    it('should report SUI-NODE-MISSING when a rendered node still exists but its component becomes empty', () => {
+        // Arrange
+        const label = nextTag('label');
+        defineComponent({ tag: label, template: '<b>{{ $.text }}</b>' });
+        setNodeResolver((name) => name === 'label' ? label : undefined);
+        const { store, host } = createRoot({ nodes: { a: { component: 'label', text: 'hi' } } });
+        const node = addNode(host, 'nodes.a');
+
+        // Act
+        store.set('$.nodes.a.component', '');
+
+        // Assert
+        expect(node.firstElementChild).toBeNull();
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('SUI-NODE-MISSING'), expect.objectContaining({ state: '$.nodes.a' }));
+    });
+
+    it('should report SUI-NODE-MISSING for a path that never existed, as no child had rendered', () => {
+        // Arrange
+        const { host } = createRoot({ nodes: {} });
+
+        // Act
+        addNode(host, 'nodes.never');
+
+        // Assert
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('SUI-NODE-MISSING'), expect.objectContaining({ state: '$.nodes.never' }));
+    });
+
     it('should render once the node appears', () => {
         // Arrange
         const tag = nextTag('late');

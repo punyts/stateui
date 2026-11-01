@@ -29,8 +29,10 @@ const findLayoutHost = (child: Element): Element => child.shadowRoot?.querySelec
 /**
  * Renders the component the node at its state path names. It reads `component`, asks the node resolver for a tag and
  * creates that element with the same absolute state path as its only child; when `component` changes the child is
- * replaced, and nothing else is re-rendered (the child's own bindings handle every other property). A missing node,
- * a missing `component` or a name the resolver does not know renders nothing and is reported as SUI-NODE-MISSING.
+ * replaced, and nothing else is re-rendered (the child's own bindings handle every other property). A node that was
+ * never there, a node with a missing or empty `component` or a name the resolver does not know renders nothing and is
+ * reported as SUI-NODE-MISSING. The one silent case is a node that had rendered a child and is then deleted (the value
+ * at its path is gone): its owner is removing it, so the child is removed without a report.
  * The element is display: contents, so the child it creates is the layout item of the container that holds it.
  *
  * It also writes, reactively and write-only, the node's presentation onto the child: `placement` as attributes
@@ -237,8 +239,12 @@ export class SuiNode extends HTMLElement implements ScopeProvider, ScopeConsumer
      * @param basePath
      */
     #render(component: unknown, basePath: string): void {
+        const hadChild = this.#child !== undefined;
         this.#removeChild();
         if (typeof component !== 'string' || component === '') {
+            if (hadChild && this.scope?.store.get(basePath) === undefined) {
+                return;
+            }
             report.error(`${NODE_MISSING}: no node or no component at ${basePath}`, { code: NODE_MISSING, state: basePath });
             return;
         }
