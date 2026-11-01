@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- A bound `style` attribute is written through `element.style.cssText` instead of `setAttribute`, so it applies under a Content-Security-Policy whose `style-src` has no `'unsafe-inline'` (the preview runtime page). Before, every bound `style` was refused there, which left `--sui-count`, field widths, progress values and grid spans unset.
 - An expression evaluation reads its scope's base object from the store once, however many names it looks up there.
 
 ## 0.2.0

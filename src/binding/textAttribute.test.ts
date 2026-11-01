@@ -166,6 +166,20 @@ describe('attribute binding', () => {
         });
     });
 
+    it('should write a style value through the CSSOM, not setAttribute, so a strict style-src allows it', () => {
+        // Arrange
+        const { store, element } = render('<div style="--count: {{ $.count }}; order: {{ $.order }}">x</div>', { count: 2, order: 1 });
+        const cssText = vi.spyOn(element.style, 'cssText', 'set');
+
+        // Act
+        store.state.count = 5;
+
+        // Assert
+        expect(cssText).toHaveBeenCalledWith('--count: 5; order: 1');
+        expect(element.style.getPropertyValue('--count').trim()).toBe('5');
+        expect(element.style.order).toBe('1');
+    });
+
     it('should convert dashed attribute names to camelCase properties', () => {
         // Act / Assert
         expect(toCamelCase('data-item-id')).toBe('dataItemId');

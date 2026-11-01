@@ -33,7 +33,8 @@ const isPropertyValue = (value: unknown) => {
  * Binds an attribute value. A value made of several parts always renders as a string attribute. A single {{ }} is
  * applied by type on every update: an object or function becomes a property (el[camelCase(name)], and the attribute
  * is removed); null, undefined and false remove the attribute; true sets it to ""; any other primitive sets
- * String(value). Leaving property mode first assigns undefined to the property. on* attributes are never written
+ * String(value). A style value is written through element.style.cssText, which a strict Content-Security-Policy
+ * allows where setAttribute is refused. Leaving property mode first assigns undefined to the property. on* attributes are never written
  * here (they belong to the event binding), and javascript: URLs in href, src, action and formaction are refused
  * @param node
  * @param entry
@@ -43,6 +44,7 @@ export const attachAttribute = (node: Node, entry: PlanEntry, scope: Scope): Bin
     const element = node as Element;
     const name = entry.attrName!;
     const property = toCamelCase(name);
+    const isStyle = name.toLowerCase() === 'style';
     const isSingleExpression = entry.parts.length === 1 && typeof entry.parts[0] !== 'string';
     let propertyMode = false;
 
@@ -50,6 +52,12 @@ export const attachAttribute = (node: Node, entry: PlanEntry, scope: Scope): Bin
         if (isUnsafeUrl(name, value)) {
             element.removeAttribute(name);
             report.error(`Refused a javascript: URL for the ${name} attribute`, { attribute: name, nodePath: entry.nodePath });
+            return;
+        }
+        //a style attribute written with setAttribute is refused by a Content-Security-Policy without 'unsafe-inline' in
+        //style-src (the preview runtime page has one); written through the CSSOM it is allowed and reflects the same
+        if (isStyle && 'style' in element) {
+            (element as HTMLElement).style.cssText = value;
             return;
         }
         element.setAttribute(name, value);
