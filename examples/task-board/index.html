@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StateUI task board</title>
+    <style>
+        html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+        body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; }
+        #app { min-height: 100%; }
+        #console { background: #0f1117; color: #d7dae0; padding: 16px; display: grid; gap: 12px; align-content: start; overflow: auto; font-size: 13px; }
+        #console h2 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: #8b93a7; }
+        #console p { margin: 0; color: #8b93a7; }
+        .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+        .actions button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #2c3140; background: #1a1e29; color: inherit; cursor: pointer; }
+        .actions button:hover { background: #242a38; }
+        pre { margin: 0; padding: 10px; border-radius: 6px; background: #161a23; white-space: pre-wrap; word-break: break-word; }
+        #log { color: #9fe0b5; }
+        @media (max-width: 800px) { body { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <aside id="console">
+        <h2>Agent console</h2>
+        <p>These buttons only write to the store, as an agent tool would. The UI updates before each write returns.</p>
+        <div class="actions">
+            <button data-action="add-task">Add task</button>
+            <button data-action="rename">Rename board</button>
+            <button data-action="complete-all">Complete all</button>
+            <button data-action="theme">Toggle theme</button>
+            <button data-action="accent">Random accent</button>
+        </div>
+        <pre id="log">Click an action.</pre>
+        <h2>Store</h2>
+        <pre id="store-json"></pre>
+    </aside>
+    <script type="module" src="./main.ts"></script>
+</body>
+</html>
