@@ -66,12 +66,12 @@ describe('parseTemplate in Chromium', () => {
         expect(typeof error.column).toBe('number');
     });
 
-    it('should parse a valid template into XHTML elements', () => {
+    it('should parse a valid template into plain XML elements in no namespace', () => {
         // Act
         const elements = parseTemplate('<ul><li>a</li><li>b</li></ul><input />');
 
         // Assert
         expect(elements.map((element) => element.localName)).toEqual(['ul', 'input']);
-        expect(elements[0].namespaceURI).toBe('http://www.w3.org/1999/xhtml');
+        expect(elements[0].namespaceURI).toBeNull();
     });
 });

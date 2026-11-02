@@ -7,7 +7,7 @@ const sheets: WeakMap<StyleProgram, CSSStyleSheet> = new WeakMap();
  * Feature test for constructable, adoptable stylesheets (never user-agent sniffing)
  * @param root
  */
-const supportsAdoptedSheets = (root: ShadowRoot): boolean => typeof CSSStyleSheet === 'function'
+export const supportsAdoptedSheets = (root: Node): boolean => typeof CSSStyleSheet === 'function'
     && typeof CSSStyleSheet.prototype.replaceSync === 'function'
     && Array.isArray((root as { adoptedStyleSheets?: unknown }).adoptedStyleSheets);
 

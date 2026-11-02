@@ -1,12 +1,12 @@
 import { TemplateCompileError, TemplateParseError } from '../errors.js';
 
-const XHTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
-
 /**
- * Wraps the template so several top-level elements form one XML document in the XHTML namespace.
- * It has no newline, so engine line numbers match the caller's string and only line 1 columns need correcting
+ * Wraps the template so several top-level elements form one XML document. It declares no namespace: an XHTML element
+ * carrying an on* or style attribute is checked against the page's Content-Security-Policy the moment it is parsed,
+ * so elements stay plain XML until compile builds the HTML ones. It has no newline, so engine line numbers match the
+ * caller's string and only line 1 columns need correcting
  */
-const WRAPPER_OPEN = `<root xmlns="${XHTML_NAMESPACE}">`;
+const WRAPPER_OPEN = '<root>';
 const WRAPPER_CLOSE = '</root>';
 
 /**
@@ -144,7 +144,8 @@ const assertNoForbiddenElements = (root: Element) => {
 
 /**
  * Parses a template string as strict XHTML and returns its top-level elements.
- * The elements belong to an XML document; compile imports them into the HTML document, so never use innerHTML on them
+ * The elements are plain XML in no namespace (an explicit xmlns, such as SVG's, is kept); compile builds HTML elements
+ * from them, so never use innerHTML on them
  * @param source
  * @throws TemplateParseError when the source is not well-formed
  * @throws TemplateCompileError when the source contains a script or style element
@@ -154,7 +155,7 @@ export const parseTemplate = (source: string): Element[] => {
 
     const doc = new DOMParser().parseFromString(
         WRAPPER_OPEN + source + WRAPPER_CLOSE,
-        'application/xhtml+xml'
+        'application/xml'
     );
 
     //engines put <parsererror> in different places and namespaces, so search by tag name across the document

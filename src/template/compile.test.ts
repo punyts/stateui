@@ -83,6 +83,18 @@ describe('compileTemplate', () => {
         expect(plan).toEqual([expect.objectContaining({ kind: 'event', attrName: 'onclick', eventName: 'click', nodePath: [0] })]);
     });
 
+    it('should import the parsed nodes into an inert document, never the live one where an on* attribute meets the CSP', () => {
+        // Arrange
+        const importNode = vi.spyOn(document, 'importNode');
+
+        // Act
+        compileTemplate('<button onclick="{{ ($v)=>$.press }}">Inert</button>');
+
+        // Assert
+        expect(importNode).not.toHaveBeenCalled();
+        importNode.mockRestore();
+    });
+
     const badEvents = Object.freeze({
         'a literal handler': '<button onclick="alert(1)">x</button>',
         'literal text mixed with an expression': '<button onclick="go {{ $.a }}">x</button>',

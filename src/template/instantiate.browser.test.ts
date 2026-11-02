@@ -43,4 +43,21 @@ describe('instantiate in Chromium', () => {
         expect((probe as UpgradeProbe).received).toBe(42);
         expect(instance.fragment.isConnected).toBe(false);
     });
+
+    it('should build HTML elements, keep an explicit SVG namespace and apply a static style through the CSSOM', () => {
+        // Arrange
+        const compiled = compileTemplate('<div style="color: rgb(255, 0, 0)"><button onclick="{{ $.press }}">Go</button><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0" /></svg></div>');
+
+        // Act
+        const instance = instantiate(compiled, new Scope(createStore<any>({ press: () => undefined }), '$'));
+
+        // Assert
+        const div = instance.fragment.querySelector('div')!;
+        expect(div).toBeInstanceOf(HTMLDivElement);
+        expect(div.style.color).toBe('rgb(255, 0, 0)');
+        expect(instance.fragment.querySelector('button')).toBeInstanceOf(HTMLButtonElement);
+        expect(instance.fragment.querySelector('button')!.hasAttribute('onclick')).toBe(false);
+        expect(instance.fragment.querySelector('svg')).toBeInstanceOf(SVGSVGElement);
+        expect(instance.fragment.querySelector('path')!.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    });
 });

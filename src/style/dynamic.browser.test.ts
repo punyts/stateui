@@ -156,7 +156,7 @@ describe('per-instance dynamic style rules in Chromium', () => {
         expect((dynamic.cssRules[0] as CSSMediaRule).conditionText).toBe('(min-width: 2px)');
     });
 
-    it('should prefix light-DOM rules with the instance attribute and remove the <style> and attribute on detach', () => {
+    it('should prefix light-DOM rules with the instance attribute and drop the adopted sheet and attribute on detach', () => {
         // Arrange
         const tag = nextTag('light');
         defineComponent({ tag, shadow: false, template: '<p class="item-a">a</p>', styles: ':host .item-{{ $.sel }} { color: red; }' });
@@ -172,12 +172,13 @@ describe('per-instance dynamic style rules in Chromium', () => {
         const id = first.getAttribute('data-sui')!;
         expect(id).toBeTruthy();
         expect(second.getAttribute('data-sui')).not.toBe(id);
-        const style = document.head.querySelector<HTMLStyleElement>(`style[data-sui-dynamic="${id}"]`)!;
-        expect(style.sheet!.cssRules[0].cssText).toContain(`[data-sui="${id}"]`);
+        const sheet = document.adoptedStyleSheets.find((sheet) => [...sheet.cssRules].some((rule) => rule.cssText.includes(`[data-sui="${id}"]`)));
+        expect(sheet).toBeDefined();
+        expect(document.head.querySelector('style[data-sui-dynamic]')).toBeNull();
         expect(getComputedStyle(first.querySelector('.item-a')!).color).toBe(RED);
         first.remove();
         second.remove();
-        expect(document.head.querySelector('style[data-sui-dynamic]')).toBeNull();
+        expect(document.adoptedStyleSheets).not.toContain(sheet);
         expect(first.hasAttribute('data-sui')).toBe(false);
         expect(off.mock.calls.length).toBe(on.mock.calls.length);
     });

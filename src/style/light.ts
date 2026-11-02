@@ -1,11 +1,13 @@
+import { supportsAdoptedSheets } from './shared.js';
 import type { StyleProgram } from './types.js';
 
 interface SharedStyle {
-    style: HTMLStyleElement;
+    //how to take the CSS out of the root again: drop the adopted sheet or remove the <style>
+    remove: () => void;
     count: number;
 }
 
-//per owning root (a document or shadow root): one counted <style> per component tag
+//per owning root (a document or shadow root): one counted sheet (or <style>) per component tag
 const roots: WeakMap<Node, Map<string, SharedStyle>> = new WeakMap();
 //the wrapped CSS per component class
 const wrapped: WeakMap<StyleProgram, string> = new WeakMap();
@@ -107,7 +109,29 @@ export const styleContainer = (element: Element): ParentNode | null => {
 };
 
 /**
- * Shares one <style data-sui-style="<tag>"> per owning root (document.head for the document, the shadow root
+ * Adds a component tag's wrapped CSS to its owning root: a constructed sheet appended to adoptedStyleSheets, which a
+ * Content-Security-Policy without 'unsafe-inline' in style-src allows, or, without constructable sheets, a
+ * <style data-sui-style="<tag>"> appended to the container. Returns the function that takes it out again
+ */
+const addLightCss = (root: Node, container: ParentNode, document: Document, tag: string, css: string): (() => void) => {
+    if (supportsAdoptedSheets(root)) {
+        const owner = root as Document | ShadowRoot;
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync(css);
+        owner.adoptedStyleSheets = [...owner.adoptedStyleSheets, sheet];
+        return () => {
+            owner.adoptedStyleSheets = owner.adoptedStyleSheets.filter((entry) => entry !== sheet);
+        };
+    }
+    const style = document.createElement('style');
+    style.setAttribute('data-sui-style', tag);
+    style.textContent = css;
+    container.append(style);
+    return () => style.remove();
+};
+
+/**
+ * Shares one sheet (a <style data-sui-style="<tag>"> without constructable sheets) per owning root (document.head for the document, the shadow root
  * otherwise) between every light-DOM instance of a component: counted up here, and removed by the returned function
  * once the last instance in that root releases it. A program without static CSS adds nothing
  * @param element - the component host, connected
@@ -134,11 +158,7 @@ export const acquireLightStyles = (element: Element, program: StyleProgram): (()
             css = wrapLightCss(program.staticCss, tag);
             wrapped.set(program, css);
         }
-        const style = document.createElement('style');
-        style.setAttribute('data-sui-style', tag);
-        style.textContent = css;
-        container.append(style);
-        shared = { style, count: 0 };
+        shared = { remove: addLightCss(root, container, document, tag, css), count: 0 };
         styles.set(tag, shared);
     }
     shared.count++;
@@ -153,7 +173,7 @@ export const acquireLightStyles = (element: Element, program: StyleProgram): (()
         released = true;
         entry.count--;
         if (entry.count === 0) {
-            entry.style.remove();
+            entry.remove();
             owner.delete(tag);
         }
     };

@@ -2,6 +2,7 @@ import { createBinding, type Binding } from '../binding/Binding.js';
 import type { Scope } from '../scope/Scope.js';
 import { bindEachRule } from './each.js';
 import { rewriteHost, styleContainer } from './light.js';
+import { supportsAdoptedSheets } from './shared.js';
 import { changeKey, renderDynamicRule, ruleExpressions } from './render.js';
 import { sheetSlots, styleSlots, type RuleSlots } from './slots.js';
 import type { DynamicRule, StyleProgram } from './types.js';
@@ -93,8 +94,8 @@ export const attachShadowDynamicRules = (root: ShadowRoot, program: StyleProgram
 };
 
 /**
- * Renders a light-DOM component's dynamic rules and @each groups into a <style> of its own (in document.head or its
- * shadow root), each nested in [data-sui="<instanceId>"] with :host rewritten to &; data-sui is set on the element.
+ * Renders a light-DOM component's dynamic rules and @each groups into a sheet of its own adopted by its owning root
+ * (without constructable sheets, a <style> in document.head or its shadow root), each nested in [data-sui="<instanceId>"] with :host rewritten to &; data-sui is set on the element.
  * Returns the function that disposes the bindings and removes the <style>, the attribute and the item properties
  * @param element
  * @param program
@@ -109,16 +110,32 @@ export const attachLightDynamicRules = (element: HTMLElement, program: StyleProg
 
     const instanceId = `i${++instanceCounter}`;
     element.setAttribute('data-sui', instanceId);
-    const style = element.ownerDocument.createElement('style');
-    style.setAttribute('data-sui-dynamic', instanceId);
-    container.append(style);
-    const slots = styleSlots(style, count);
+    //a constructed sheet adopted by the owning root passes a style-src without 'unsafe-inline'; a <style> does not
+    const root = element.getRootNode();
+    let slots: RuleSlots;
+    let remove: () => void;
+    if (supportsAdoptedSheets(root)) {
+        const owner = root as Document | ShadowRoot;
+        const sheet = new CSSStyleSheet();
+        owner.adoptedStyleSheets = [...owner.adoptedStyleSheets, sheet];
+        slots = sheetSlots(sheet, count);
+        remove = () => {
+            owner.adoptedStyleSheets = owner.adoptedStyleSheets.filter((entry) => entry !== sheet);
+        };
+    }
+    else {
+        const style = element.ownerDocument.createElement('style');
+        style.setAttribute('data-sui-dynamic', instanceId);
+        container.append(style);
+        slots = styleSlots(style, count);
+        remove = () => style.remove();
+    }
 
     const prefix = `[data-sui="${instanceId}"]`;
     const dispose = bindRules(program, scope, element, slots, { literal: rewriteHost, wrap: (text) => `${prefix}{${text}}` });
     return () => {
         dispose();
-        style.remove();
+        remove();
         if (element.getAttribute('data-sui') === instanceId) {
             element.removeAttribute('data-sui');
         }

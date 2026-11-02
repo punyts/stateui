@@ -68,8 +68,51 @@ describe('component styles', () => {
     });
 
     describe('acquireLightStyles', () => {
-        it('should share one <style data-sui-style> per tag in document.head and remove it after the last release', () => {
+        it('should share one adopted sheet per tag in the document and drop it after the last release', () => {
             // Arrange
+            const styles = program('.a{color: red;}');
+            const before = document.adoptedStyleSheets.length;
+            const elements = [1, 2, 3].map(() => document.body.appendChild(document.createElement('x-light')));
+
+            // Act
+            const releases = elements.map((element) => acquireLightStyles(element, styles));
+
+            // Assert
+            expect(document.adoptedStyleSheets).toHaveLength(before + 1);
+            expect([...document.adoptedStyleSheets.at(-1)!.cssRules].map((rule) => rule.cssText).join('')).toContain('x-light');
+            expect(document.head.querySelectorAll('style')).toHaveLength(0);
+            releases[0]();
+            releases[0]();
+            releases[1]();
+            expect(document.adoptedStyleSheets).toHaveLength(before + 1);
+            releases[2]();
+            expect(document.adoptedStyleSheets).toHaveLength(before);
+        });
+
+        it('should adopt the sheet in the owning shadow root, separately from the document', () => {
+            // Arrange
+            const styles = program('.a{color: red;}');
+            const before = document.adoptedStyleSheets.length;
+            const root = document.body.appendChild(document.createElement('div')).attachShadow({ mode: 'open' });
+            const inShadow = root.appendChild(document.createElement('x-light'));
+            const inDocument = document.body.appendChild(document.createElement('x-light'));
+
+            // Act
+            const releaseShadow = acquireLightStyles(inShadow, styles);
+            const releaseDocument = acquireLightStyles(inDocument, styles);
+
+            // Assert
+            expect(root.adoptedStyleSheets).toHaveLength(1);
+            expect(document.adoptedStyleSheets).toHaveLength(before + 1);
+            releaseShadow();
+            expect(root.adoptedStyleSheets).toHaveLength(0);
+            expect(document.adoptedStyleSheets).toHaveLength(before + 1);
+            releaseDocument();
+        });
+
+        it('should share one <style data-sui-style> per tag in document.head without constructable sheets and remove it after the last release', () => {
+            // Arrange
+            vi.stubGlobal('CSSStyleSheet', undefined);
             const styles = program('.a{color: red;}');
             const elements = [1, 2, 3].map(() => document.body.appendChild(document.createElement('x-light')));
 
@@ -88,8 +131,9 @@ describe('component styles', () => {
             expect(document.head.querySelectorAll('style')).toHaveLength(0);
         });
 
-        it('should put the <style> in the owning shadow root, separately from the document', () => {
+        it('should put the <style> in the owning shadow root, separately from the document, without constructable sheets', () => {
             // Arrange
+            vi.stubGlobal('CSSStyleSheet', undefined);
             const styles = program('.a{color: red;}');
             const root = document.body.appendChild(document.createElement('div')).attachShadow({ mode: 'open' });
             const inShadow = root.appendChild(document.createElement('x-light'));

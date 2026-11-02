@@ -1,8 +1,6 @@
 import { TemplateCompileError, TemplateParseError } from '../errors.js';
 import { PARSE_HINT, parseTemplate } from './parse.js';
 
-const XHTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
-
 /**
  * Runs fn and returns what it threw, failing the test if it didn't throw
  * @param fn
@@ -19,7 +17,7 @@ const captureError = (fn: () => unknown): unknown => {
 
 describe('parseTemplate', () => {
     describe('valid templates', () => {
-        it('should return the top-level elements in the XHTML namespace', () => {
+        it('should return the top-level elements as plain XML in no namespace', () => {
             // Arrange
             const source = '<div class="a"><span>{{ $.name }}</span><input /></div>\n<p>b</p>';
 
@@ -28,7 +26,7 @@ describe('parseTemplate', () => {
 
             // Assert
             expect(elements.map((element) => element.localName)).toEqual(['div', 'p']);
-            expect(elements.every((element) => element.namespaceURI === XHTML_NAMESPACE)).toBe(true);
+            expect(elements.every((element) => element.namespaceURI === null)).toBe(true);
             expect(Array.from(elements[0].children).map((element) => element.localName)).toEqual(['span', 'input']);
             expect(elements[0].getAttribute('class')).toBe('a');
         });

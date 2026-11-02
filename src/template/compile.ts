@@ -103,7 +103,8 @@ const validateAttribute = (attr: Attr, nodePath: number[]) => {
  */
 const compileAttributes = (element: Element, nodePath: number[], template: HTMLTemplateElement, plan: PlanEntry[]) => {
     //snapshots: attributes are removed while iterating, and kinds may need a sibling's original value
-    const attrs = Array.from(element.attributes);
+    const held = heldBack.get(element) ?? [];
+    const attrs = [...Array.from(element.attributes), ...held];
     const attributes = attrs.map(({ name, value }) => ({ name, value }));
     const handled: Set<Attr> = new Set();
     const claimed: Set<string> = new Set();
@@ -132,7 +133,8 @@ const compileAttributes = (element: Element, nodePath: number[], template: HTMLT
 
     const fallback = getBindingKind(ATTRIBUTE_KIND)!;
     for (const attr of attrs) {
-        if (!handled.has(attr) && !claimed.has(attr.name) && fallback.match(attr, element)) {
+        //a held-back static style still has to reach the element, so it binds as a literal through the CSSOM
+        if (!handled.has(attr) && !claimed.has(attr.name) && (fallback.match(attr, element) || held.includes(attr))) {
             compileWith(fallback, attr);
         }
         //never leave placeholder text or handler source in the content: a clone entering a live document must not
@@ -204,6 +206,54 @@ const compileChildren = (parent: Node, parentPath: number[], template: HTMLTempl
     }
 };
 
+const XHTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
+const XMLNS_NAMESPACE = 'http://www.w3.org/2000/xmlns/';
+
+//the document compiled templates are built in, never the live one
+let inertDocument: Document | undefined;
+//per built element: its on* and style attributes, held back as detached Attr nodes for compileAttributes. A browser
+//checks either against the Content-Security-Policy as soon as an HTML or SVG element carries it, in any document
+const heldBack: WeakMap<Element, Attr[]> = new WeakMap();
+
+const isGuardedAttribute = (attr: Attr) => attr.namespaceURI === null && (isEventAttribute(attr.name) || attr.name.toLowerCase() === 'style');
+
+/**
+ * Builds the HTML (or, with an explicit xmlns, SVG or MathML) node for a parsed XML node in the given document,
+ * holding back the guarded attributes; CDATA becomes text, since an HTML document has no CDATA sections
+ * @param node
+ * @param document
+ */
+const buildNode = (node: Node, document: Document): Node => {
+    if (node.nodeType === Node.CDATA_SECTION_NODE) {
+        return document.createTextNode((node as CDATASection).data);
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+        return document.importNode(node, false);
+    }
+    const source = node as Element;
+    const element = document.createElementNS(source.namespaceURI ?? XHTML_NAMESPACE, source.prefix ? `${source.prefix}:${source.localName}` : source.localName);
+    const held: Attr[] = [];
+    for (const attr of Array.from(source.attributes)) {
+        if (attr.namespaceURI === XMLNS_NAMESPACE) {
+            continue;
+        }
+        if (isGuardedAttribute(attr)) {
+            const copy = document.createAttribute(attr.name);
+            copy.value = attr.value;
+            held.push(copy);
+            continue;
+        }
+        element.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
+    }
+    if (held.length) {
+        heldBack.set(element, held);
+    }
+    for (const child of Array.from(source.childNodes)) {
+        element.appendChild(buildNode(child, document));
+    }
+    return element;
+};
+
 /**
  * Compiles nodes that already belong to the HTML document (moved into a new template) into a CompiledTemplate.
  * Used for whole templates and for the nested branch templates of structural bindings; not cached
@@ -233,8 +283,10 @@ export const compileTemplate = (source: string): CompiledTemplate => {
     }
 
     assertNoExpressionInNames(source);
-    //the parsed nodes live in an XML document; import them into the HTML document
-    const compiled = compileNodes(parseTemplate(source).map((element) => document.importNode(element, true)));
+    //the parsed nodes live in an XML document; build their HTML counterparts in an inert document, never the live one
+    inertDocument ??= document.implementation.createHTMLDocument('');
+    const inert = inertDocument;
+    const compiled = compileNodes(parseTemplate(source).map((element) => buildNode(element, inert)));
     compiledTemplates.set(source, compiled);
     return compiled;
 };

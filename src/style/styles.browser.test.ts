@@ -102,7 +102,7 @@ describe('component styles in Chromium', () => {
     });
 
     describe('light-DOM components', () => {
-        it('should share one <style> in document.head, apply :host as & and remove it after the last instance', () => {
+        it('should share one adopted sheet in the document, apply :host as & and drop it after the last instance', () => {
             // Arrange
             const tag = nextTag('light');
             defineComponent({
@@ -117,15 +117,17 @@ describe('component styles in Chromium', () => {
             const elements = [1, 2, 3].map(() => host.appendChild(document.createElement(tag)));
 
             // Assert
-            expect(document.head.querySelectorAll(`style[data-sui-style="${tag}"]`)).toHaveLength(1);
+            const ofTag = () => document.adoptedStyleSheets.filter((sheet) => [...sheet.cssRules].some((rule) => rule.cssText.startsWith(tag)));
+            expect(ofTag()).toHaveLength(1);
+            expect(document.head.querySelectorAll(`style[data-sui-style="${tag}"]`)).toHaveLength(0);
             expect(getComputedStyle(elements[0]).display).toBe('block');
             expect(getComputedStyle(elements[0]).color).toBe(BLUE);
             expect(getComputedStyle(elements[0].querySelector('.text')!).color).toBe(RED);
             elements[0].remove();
             elements[1].remove();
-            expect(document.head.querySelectorAll(`style[data-sui-style="${tag}"]`)).toHaveLength(1);
+            expect(ofTag()).toHaveLength(1);
             elements[2].remove();
-            expect(document.head.querySelectorAll(`style[data-sui-style="${tag}"]`)).toHaveLength(0);
+            expect(ofTag()).toHaveLength(0);
         });
     });
 });

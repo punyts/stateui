@@ -165,13 +165,13 @@ describe('@each iterator-generated rules in Chromium', () => {
 
         // Assert
         const id = element.getAttribute('data-sui')!;
-        const style = document.head.querySelector<HTMLStyleElement>(`style[data-sui-dynamic="${id}"]`)!;
-        expect(style.sheet!.cssRules).toHaveLength(1);
-        expect(style.sheet!.cssRules[0].cssText).toContain(`[data-sui="${id}"]`);
+        const sheet = document.adoptedStyleSheets.find((sheet) => [...sheet.cssRules].some((rule) => rule.cssText.includes(`[data-sui="${id}"]`)))!;
+        expect(sheet.cssRules).toHaveLength(1);
+        expect(sheet.cssRules[0].cssText).toContain(`[data-sui="${id}"]`);
         expect(getComputedStyle(element.querySelector('.row-a')!).color).toBe(RED);
         element.remove();
         expect(itemProperties(element)).toHaveLength(0);
-        expect(document.head.querySelector(`style[data-sui-dynamic="${id}"]`)).toBeNull();
+        expect(document.adoptedStyleSheets).not.toContain(sheet);
     });
 
     it('should remove the item properties and release every listener on detach', () => {
