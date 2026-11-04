@@ -72,7 +72,7 @@ describe('createBinding', () => {
             const on = vi.spyOn(store, 'on');
             const off = vi.spyOn(store, 'off');
             const apply = vi.fn();
-            const binding = createBinding({ scope: new Scope(store, '$'), expressions: Expression('$.items.0.name +++ $.title'), apply, kind: 'text', nodePath: [0] });
+            const binding = createBinding({ scope: new Scope(store, '$'), expressions: Expression('$.items.0.name + $.title'), apply, kind: 'text', nodePath: [0] });
 
             // Act
             binding.dispose();

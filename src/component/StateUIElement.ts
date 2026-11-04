@@ -105,28 +105,29 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
         if (basePath === undefined) {
             return;
         }
-        this.scope = new Scope(context.store, basePath);
+        const scope = new Scope(context.store, basePath);
+        this.scope = scope;
         //the controller runs before instantiate, so its members are locals when bindings attach
-        if (!this.#runController(this.scope)) {
+        if (!this.#runController(scope)) {
             return;
         }
-        this.#instance = instantiate(compiled, this.scope);
+        this.#instance = instantiate(compiled, scope);
 
         //styles and their custom properties go in before the content, so it never renders unstyled
         if (styleProgram?.declarations.length) {
-            this.#disposeStyleProperties = attachStyleProperties(this, styleProgram, this.scope);
+            this.#disposeStyleProperties = attachStyleProperties(this, styleProgram, scope);
         }
         const fragment = this.#instance.fragment;
         if (shadowMode === false) {
             this.#releaseStyles = styleProgram && acquireLightStyles(this, styleProgram);
-            this.#disposeDynamicRules = styleProgram && attachLightDynamicRules(this, styleProgram, this.scope);
+            this.#disposeDynamicRules = styleProgram && attachLightDynamicRules(this, styleProgram, scope);
             this.#lightNodes = Array.from(fragment.childNodes);
             this.append(fragment);
             return;
         }
         this.#shadowRoot ??= this.attachShadow({ mode: shadowMode });
         this.#releaseStyles = styleProgram && adoptStyles(this.#shadowRoot, styleProgram);
-        this.#disposeDynamicRules = styleProgram && attachShadowDynamicRules(this.#shadowRoot, styleProgram, this.scope);
+        this.#disposeDynamicRules = styleProgram && attachShadowDynamicRules(this.#shadowRoot, styleProgram, scope);
         this.#shadowRoot.append(fragment);
     }
 
@@ -173,7 +174,19 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
             }
             scope.locals.set(name, { value });
         }
-        this.#disposeController = typeof result?.dispose === 'function' ? result.dispose : undefined;
+        const dispose = typeof result?.dispose === 'function' ? result.dispose : undefined;
+        //a write of the controller can re-render a parent that removes this element, and detach it (and maybe attach
+        //it again) before the controller returns: this attach is over, so its controller is disposed and it renders nothing
+        if (this.scope !== scope) {
+            try {
+                dispose?.();
+            }
+            catch (error) {
+                report.error(`<${this.localName}> controller dispose failed: ${error instanceof Error ? error.message : String(error)}`, { error });
+            }
+            return false;
+        }
+        this.#disposeController = dispose;
         return true;
     }
 

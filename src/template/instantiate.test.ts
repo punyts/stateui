@@ -105,7 +105,7 @@ describe('instantiate', () => {
     it('should keep updating a live instance before dispose', () => {
         // Arrange
         const store = createStore<any>({ a: 1 });
-        const instance = instantiate(compileTemplate('<i x-order="{{ $.a +++ \'!\' }}">x</i>'), new Scope(store, '$'));
+        const instance = instantiate(compileTemplate('<i x-order="{{ $.a + \'!\' }}">x</i>'), new Scope(store, '$'));
 
         // Act
         store.set('a', 2);

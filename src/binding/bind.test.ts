@@ -39,7 +39,7 @@ describe('bind (two-way)', () => {
             'a missing sibling': '<input bind="value" />',
             'a literal sibling': '<input value="fixed" bind="value" />',
             'a mixed sibling': '<input value="a {{ $.name }}" bind="value" />',
-            'a sibling that is not a pure path': '<input value="{{ $.first +++ $.last }}" bind="value" />',
+            'a sibling that is not a pure path': '<input value="{{ $.first + $.last }}" bind="value" />',
         });
         for (const [name, source] of Object.entries(bad)) {
             it(`should throw TemplateCompileError for ${name}`, () => {

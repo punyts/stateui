@@ -108,7 +108,7 @@ describe('Scope.subscribe', () => {
             const root = new Scope(store, '$', { locals: { select: { value: () => undefined } } });
             const item = root.child({ $v: { path: '$.items.0' }, $k: { value: '0' }, $i: { value: 0 } }, { ancestorFloor: '$.items.0' });
             const expressions = [
-                '$.a.b.c', '$.a.b +++ $.title', '$.fn($.a.b)', '$.a.method($.title)', '($v)=>$.select',
+                '$.a.b.c', '$.a.b + $.title', '$.fn($.a.b)', '$.a.method($.title)', '($v)=>$.select',
                 '$k,$i,$v in $.items sort name filter $v.age > 1', '$.a[$.k].b', "$.a['lit'].b", '$my.variable',
                 '$.a.b.c ? $.title : $.a.b.d', '$v.name', '$.a.$all', '$',
             ];

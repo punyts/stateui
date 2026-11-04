@@ -15,7 +15,7 @@ import type { CompiledExpression } from '@punyts/expression';
  */
 const CASES: Readonly<Record<string, readonly string[]>> = Object.freeze({
     '$.a.b': ['$.a.b'],
-    '$.a.b +++ $.c': ['$.a.b', '$.c'],
+    '$.a.b + $.c': ['$.a.b', '$.c'],
     '$.fn($.x)': ['$.fn', '$.x'],
     '$.obj.method($.x)': ['$.obj.method', '$.x'],
     '($v)=>$.select': ['$.select', '$v'],

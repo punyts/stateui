@@ -90,6 +90,35 @@ describe('component controllers in Chromium', () => {
         expect(dispose).toHaveBeenCalledTimes(2);
     });
 
+    it('should stop an attach whose controller detached the element, and dispose that controller', () => {
+        // Arrange: the controller removes its element, as a store write that re-renders the parent does
+        const tag = nextTag('detached');
+        const dispose = vi.fn();
+        let runs = 0;
+        defineComponent({
+            tag,
+            template: '<p>{{ $.title }}</p>',
+            controller: (context) => {
+                runs++;
+                if (runs === 1) context.element.remove();
+                return { dispose };
+            },
+        });
+        const { host } = createRoot({ title: 'T' });
+        const element = document.createElement(tag);
+
+        // Act
+        host.appendChild(element);
+        const afterDetach = element.shadowRoot?.querySelector('p') ?? null;
+        host.appendChild(element);
+
+        // Assert
+        expect(afterDetach).toBeNull();
+        expect(dispose).toHaveBeenCalledTimes(1);
+        expect(element.shadowRoot!.querySelector('p')!.textContent).toBe('T');
+        expect(errorSpy).not.toHaveBeenCalled();
+    });
+
     it('should report a throwing controller, render nothing for it and leave siblings rendering', () => {
         // Arrange
         const broken = nextTag('broken');

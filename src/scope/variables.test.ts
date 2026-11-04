@@ -35,7 +35,7 @@ describe('classifyVariable', () => {
         it('should classify every variable of a compiled expression', () => {
             // Arrange
             const scope = createScope('$');
-            const { variables } = Expression("$.flag ? $.a.b : $.c +++ 'x'");
+            const { variables } = Expression("$.flag ? $.a.b : $.c + 'x'");
 
             // Act
             const classes = variables.map((variable) => classifyVariable(variable, scope));

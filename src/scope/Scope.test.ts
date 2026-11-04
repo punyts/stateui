@@ -83,7 +83,7 @@ describe('Scope', () => {
             // Act / Assert
             expect(evaluate(scope, '$.name')).toBe('Jo');
             expect(evaluate(scope, 'settings.theme')).toBe('dark');
-            expect(evaluate(scope, "$.name +++ '!'")).toBe('Jo!');
+            expect(evaluate(scope, "$.name + '!'")).toBe('Jo!');
         });
 
         it('should never cache a proxy: after store.replace the next evaluate sees the new object', () => {
