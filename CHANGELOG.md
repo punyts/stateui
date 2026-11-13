@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- A layout setting turned off (`false`) is written on the layout host as `layout-<setting>="false"` instead of being left out, so a layout can tell `wrap: false` from a setting not given. A setting turned on is still written as an empty attribute.
 - Fix: a component whose controller detaches its element before it returns (a controller write that re-renders the parent removes it) stops that attach and disposes the controller. It used to go on with no scope and throw "Cannot read properties of undefined (reading 'subscribe')" from its first binding.
 - Tests use `+` for string concatenation: `@punyts/expression` removed `+++`.
 - A bound `style` attribute is written through `element.style.cssText` instead of `setAttribute`, so it applies under a Content-Security-Policy whose `style-src` has no `'unsafe-inline'` (the preview runtime page). Before, every bound `style` was refused there, which left `--sui-count`, field widths, progress values and grid spans unset.

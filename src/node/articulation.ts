@@ -74,7 +74,8 @@ export const placementAttributes = (placement: unknown): Desired => {
 
 /**
  * The attributes and custom properties a `layout` object asks for: `type` becomes `layout`, any other setting
- * becomes `layout-<setting>` and, when it is a string or a number, `--layout-<setting>`
+ * becomes `layout-<setting>` and, when it is a string or a number, `--layout-<setting>`. A setting turned off (`false`) is
+ * written as `"false"`, so a layout can tell it from a setting left out (`wrap: false` keeps a row on one line)
  * @param layout
  */
 export const layoutWrites = (layout: unknown): { attributes: Desired; properties: Desired } => {
@@ -88,7 +89,7 @@ export const layoutWrites = (layout: unknown): { attributes: Desired; properties
             addAttribute(attributes, '', 'layout', value);
             continue;
         }
-        const name = addAttribute(attributes, 'layout-', key, value);
+        const name = addAttribute(attributes, 'layout-', key, value === false ? 'false' : value);
         const text = scalarText(value);
         if (name !== undefined && text !== undefined) {
             properties.set(`--${name}`, text);
