@@ -25,21 +25,21 @@ store.state.items.push({ id: 1, text: 'Write the README' }); // the <li> exists 
 
 ## Install and build
 
-StateUI is developed inside the ai-minion workspace, where `libraries/*` are npm workspaces (`bin/setup.sh` clones
-them).
+StateUI is developed in the punyts workspace, where each library folder is its own git repo and an npm workspace.
+`npm run setup` at the workspace root clones the libraries (`node bin/workspace.mjs clone`), installs, builds every
+library in dependency order and installs Playwright's Chromium for the browser tests.
 
-- Build `@punyts/state` and `@punyts/expression` first. StateUI consumes them through their `dist/` output, so on a
-  fresh checkout run `npm run build` at the ai-minion root, which builds every library in dependency order.
-- `npm run build` in `libraries/stateui` typechecks the package and emits `dist/`.
-- The browser test suite needs Playwright's Chromium: `npx playwright install chromium`, which downloads browser
-  binaries.
+- StateUI consumes `@punyts/core`, `@punyts/state` and `@punyts/expression` through their `dist/` output, so build them
+  first: `npm run build` at the workspace root builds every library in order, and
+  `node bin/workspace.mjs run build core expression state stateui` builds just these.
+- `npm run build` in `stateui/` typechecks the package and emits `dist/`.
 
 ### Required dependency versions
 
 | Package | Range in `package.json` | Why |
 | --- | --- | --- |
-| `@punyts/state` | `^1.1.0` | 1.1.0 has the reactive-emit fixes (AMM-1582) and the array-mutator fixes through proxies (AMM-1584). |
-| `@punyts/expression` | `^1.3.0` | 1.1.0 has the `$`-named iterator locals in `filter` and `sort` (AMM-1583). The exported `CompiledExpression` type (AMM-1586) and object literals and `?:` arrive by 1.3.0, which StateUI's templates use. |
+| `@punyts/state` | `^1.2.0` | Store links (`link`, `unlink`), re-pointing and `protect` arrive in 1.2.0; 1.1.0 has the array-mutator fixes through proxies. |
+| `@punyts/expression` | `^1.4.0` | Parenthesised groups and JavaScript precedence arrive in 1.4.0; object literals and `?:`, which StateUI's templates use, by 1.3.0. |
 | `@punyts/core` | `^1.0.0` | The reporter that every StateUI error goes through. |
 
 ## Template syntax
@@ -309,5 +309,6 @@ npm test              # unit tests in happy-dom
 npm run test:browser  # browser tests in headless Chromium (needs: npx playwright install chromium)
 ```
 
-From the ai-minion root: `npm test -w @punyts/stateui` and `npm run test:browser -w @punyts/stateui`. The root
-`npm test` doesn't run library suites, and CI doesn't run the browser suite.
+From the workspace root: `npm test` runs every library's unit tests in build order (through `bin/workspace.mjs`), StateUI's
+included; the browser suite runs with `node bin/workspace.mjs run test:browser stateui`. `npm test -w @punyts/stateui`
+and `npm run test:browser -w @punyts/stateui` run one suite.
