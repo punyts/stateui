@@ -105,7 +105,7 @@ export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeC
         if (basePath === undefined) {
             return;
         }
-        const scope = new Scope(context.store, basePath);
+        const scope = new Scope(context.store, basePath, context.callable === undefined ? {} : { callable: context.callable });
         this.scope = scope;
         //the controller runs before instantiate, so its members are locals when bindings attach
         if (!this.#runController(scope)) {

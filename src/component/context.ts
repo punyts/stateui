@@ -1,6 +1,7 @@
 import type { Store } from '@punyts/state';
 import { StateUIError } from '../errors.js';
 import { normalizePath } from '../scope/path.js';
+import type { Callable } from '../scope/Scope.js';
 import type { MountContext, ScopeProvider } from './types.js';
 import { attachWaitingBeneath, detachAttachedOwnedBy } from './waiting.js';
 
@@ -37,7 +38,7 @@ const findScopeOwner = (el: Element): { owner: Element; context: MountContext } 
         }
         const scope = getProvidedScope(node);
         if (scope) {
-            return { owner: node, context: { store: scope.store, basePath: scope.basePath } };
+            return { owner: node, context: { store: scope.store, basePath: scope.basePath, ...(scope.callable !== undefined && { callable: scope.callable }) } };
         }
     }
     return undefined;
@@ -84,13 +85,14 @@ export const isBeneath = (el: Element, host: Element): boolean => {
  * @param host
  * @param store
  * @param path - defaults to the store root
+ * @param options - callable: what expressions below call a callee through when its value is not a function
  * @throws StateUIError when host is already mounted or path is invalid
  */
-export const mount = (host: Element, store: Store<any>, path = '$'): void => {
+export const mount = (host: Element, store: Store<any>, path = '$', options: { callable?: Callable } = {}): void => {
     if (mounts.has(host)) {
         throw new StateUIError(`<${host.localName}> is already mounted; unmount it first`);
     }
-    mounts.set(host, { store, basePath: normalizePath(path) });
+    mounts.set(host, { store, basePath: normalizePath(path), ...(options.callable !== undefined && { callable: options.callable }) });
     attachWaitingBeneath(host);
 };
 

@@ -1,5 +1,5 @@
 import type { Store } from '@punyts/state';
-import type { Scope } from '../scope/Scope.js';
+import type { Callable, Scope } from '../scope/Scope.js';
 
 /**
  * An element that provides a scope to its descendants once attached (StateUIElement implements it, E5.2a)
@@ -14,6 +14,8 @@ export interface ScopeProvider {
 export interface MountContext {
     store: Store<any>;
     basePath: string;
+    /** What expressions below call a callee through when its value is not a function */
+    callable?: Callable;
 }
 
 /**

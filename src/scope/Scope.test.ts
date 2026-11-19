@@ -227,3 +227,35 @@ describe('Scope', () => {
         });
     });
 });
+
+describe('Scope callable', () => {
+    it('should call through callable a function path the store holds no function at, in child scopes too', () => {
+        // Arrange
+        const store = createPeopleStore();
+        const asked: string[] = [];
+        const callable = (_value: unknown, path: string) => {
+            asked.push(path);
+            return path === '$.functions.host.shout' ? (text: unknown) => `${String(text)}!` : undefined;
+        };
+        const scope = new Scope(store, '$', { callable });
+
+        // Act
+        const root = evaluate(scope, '$.functions.host.shout($.title)');
+        const child = evaluate(scope.child({ who: { value: 'Ann' } }), '$.functions.host.shout(who)');
+
+        // Assert
+        expect([root, child]).toEqual(['People!', 'Ann!']);
+        expect(asked).toEqual(['$.functions.host.shout', '$.functions.host.shout']);
+    });
+
+    it('should fail a call of a path with no function when there is no callable', () => {
+        // Arrange
+        const scope = new Scope(createPeopleStore(), '$');
+
+        // Act
+        const call = () => evaluate(scope, '$.functions.host.shout($.title)');
+
+        // Assert
+        expect(call).toThrow();
+    });
+});

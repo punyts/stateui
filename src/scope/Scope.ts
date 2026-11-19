@@ -1,5 +1,5 @@
 import { report } from '@punyts/core';
-import type { CompiledExpression } from '@punyts/expression';
+import type { CompiledExpression, ExecuteOptions } from '@punyts/expression';
 import type { EventListenerFn, Store } from '@punyts/state';
 import { normalizePath } from './path.js';
 import { bindEverySegments, classifyVariable, countEverySegments, readVariable } from './variables.js';
@@ -29,10 +29,15 @@ export interface LocalEntry {
     value?: unknown;
 }
 
+/** Turns the value at a called path into the function to call (`ExecuteOptions.callable`), such as a pointer to loaded code */
+export type Callable = NonNullable<ExecuteOptions['callable']>;
+
 export interface ScopeOptions {
     parent?: Scope;
     locals?: Record<string, LocalEntry>;
     ancestorFloor?: string;
+    /** What expressions in this scope and its children call a callee through when its value is not a function */
+    callable?: Callable;
 }
 
 export interface ChildScopeOptions {
@@ -107,6 +112,7 @@ export class Scope {
     readonly basePath: string;
     readonly parent?: Scope;
     readonly locals: Map<string, LocalEntry>;
+    readonly callable?: Callable;
 
     #ancestorFloor: string;
     #context?: object;
@@ -120,6 +126,7 @@ export class Scope {
         this.basePath = normalizePath(basePath);
         this.parent = options.parent;
         this.locals = new Map(Object.entries(options.locals ?? {}));
+        this.callable = options.callable ?? options.parent?.callable;
         this.#ancestorFloor = options.ancestorFloor
             ?? options.parent?.ancestorFloor
             ?? getFirstSegmentPath(this.basePath);
@@ -399,7 +406,7 @@ export class Scope {
         const outer = this.#evaluation;
         this.#evaluation = {};
         try {
-            return compiled.execute(this.#context, { quiet: true });
+            return compiled.execute(this.#context, this.callable === undefined ? { quiet: true } : { quiet: true, callable: this.callable });
         }
         finally {
             this.#evaluation = outer;

@@ -104,7 +104,7 @@ export class SuiNode extends HTMLElement implements ScopeProvider, ScopeConsumer
             return;
         }
         //the scope is set before the first render, so the created child finds it when it connects
-        this.scope = new Scope(context.store, basePath);
+        this.scope = new Scope(context.store, basePath, context.callable === undefined ? {} : { callable: context.callable });
         this.#binding = createBinding({
             scope: this.scope,
             expressions: COMPONENT,

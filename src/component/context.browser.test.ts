@@ -62,6 +62,21 @@ describe('mount, unmount and scope discovery in Chromium', () => {
         expect(probe.resolved).toEqual({ store, basePath: '$.users.current' });
     });
 
+    it('should give the callable of the mount to what scopes itself from it', () => {
+        // Arrange
+        const store = createStore<any>({});
+        const callable = () => undefined;
+        const host = createRoot();
+        mount(host, store, '$', { callable });
+        const probe = document.createElement('x-scope-probe') as ProbeConsumer;
+
+        // Act
+        host.appendChild(probe);
+
+        // Assert
+        expect(probe.resolved).toEqual({ store, basePath: '$', callable });
+    });
+
     it('should resolve two roots with different stores independently', () => {
         // Arrange
         const storeA = createStore<any>({ a: 1 });
