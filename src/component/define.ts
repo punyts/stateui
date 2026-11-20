@@ -43,6 +43,7 @@ export const defineComponent = (options: ComponentOptions): typeof StateUIElemen
     const styleProgram = styles === undefined ? undefined : scanStyles(styles, classId);
     const Component = class extends StateUIElement {
         static override compiled = compiled;
+        static override template = template;
         static override shadowMode: ShadowMode = shadow;
         static override controller = controller;
         static override classId = classId;

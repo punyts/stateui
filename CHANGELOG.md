@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **An element class keeps its template text.** `defineComponent` sets `static template` beside `compiled`, so a host can read what a component's template names, such as the function paths its expressions call. Tests: `stateui-app/src/dom/mount/logic.browser.test.ts` ("should load a function that only a placed component's template names…").
 - **Scopes carry `callable`.** `Scope` takes `callable` (`ExecuteOptions['callable']`, exported as `Callable`) and its children inherit it, so expressions in templates call a function path through it; a mount's context gives it to the elements below. Tests: `scope/Scope.test.ts` ("should call through callable a function path the store holds no function at, in child scopes too"), `component/context.browser.test.ts` ("should give the callable of the mount to what scopes itself from it").
 - A layout setting turned off (`false`) is written on the layout host as `layout-<setting>="false"` instead of being left out, so a layout can tell `wrap: false` from a setting not given. A setting turned on is still written as an empty attribute.
 - Fix: a component whose controller detaches its element before it returns (a controller write that re-renders the parent removes it) stops that attach and disposes the controller. It used to go on with no scope and throw "Cannot read properties of undefined (reading 'subscribe')" from its first binding.

@@ -24,6 +24,8 @@ const STATE_ATTRIBUTE = 'state';
  */
 export class StateUIElement extends HTMLElement implements ScopeProvider, ScopeConsumer {
     static compiled?: CompiledTemplate;
+    //the template text as defined, for a host that reads what it names (the functions its expressions call)
+    static template?: string;
     static shadowMode: ShadowMode = 'open';
     static controller?: Controller;
     //c<N>, allocated by defineComponent and used in the class's custom-property names
