@@ -2,16 +2,26 @@ import { report } from '@punyts/core';
 import { createStore } from '@punyts/state';
 import { mount, unmount } from '../component/context.js';
 import { defineComponent } from '../component/define.js';
-import { setNodeOptions, setNodeResolver } from './options.js';
+import type { NodeOptions, NodeResolver } from './options.js';
 import { SuiNode } from './SuiNode.js';
 
 let counter = 0;
 const nextTag = (name: string) => `x-node-${name}-${++counter}`;
 
+/** The resolver and options the next root is mounted with */
+let resolver: NodeResolver | undefined;
+let nodeOptions: NodeOptions | undefined;
+const useResolver = (next: NodeResolver | undefined) => {
+    resolver = next;
+};
+const useNodeOptions = (next: NodeOptions | undefined) => {
+    nodeOptions = next;
+};
+
 const createRoot = (state: Record<string, unknown>) => {
     const store = createStore<any>(state);
     const host = document.body.appendChild(document.createElement('div'));
-    mount(host, store);
+    mount(host, store, '$', { ...(resolver !== undefined && { resolver }), ...(nodeOptions !== undefined && { nodeOptions }) });
     return { store, host };
 };
 
@@ -29,8 +39,8 @@ describe('<sui-node> in Chromium', () => {
     });
 
     afterEach(() => {
-        setNodeResolver(undefined);
-        setNodeOptions(undefined);
+        useResolver(undefined);
+        useNodeOptions(undefined);
         errorSpy.mockRestore();
         for (const host of Array.from(document.body.children)) {
             unmount(host);
@@ -47,7 +57,7 @@ describe('<sui-node> in Chromium', () => {
         // Arrange
         const label = nextTag('label');
         defineComponent({ tag: label, template: '<b>{{ $.text }}</b>' });
-        setNodeResolver((name) => name === 'label' ? label : undefined);
+        useResolver((name) => name === 'label' ? label : undefined);
         const { store, host } = createRoot({ nodes: { a: { component: 'label', text: 'hi' } } });
 
         // Act
@@ -70,7 +80,7 @@ describe('<sui-node> in Chromium', () => {
         const second = nextTag('second');
         defineComponent({ tag: first, template: '<b>{{ $.text }}</b>', controller: () => ({ dispose }) });
         defineComponent({ tag: second, template: '<i>{{ $.text }}</i>' });
-        setNodeResolver((name) => ({ first, second })[name as 'first' | 'second']);
+        useResolver((name) => ({ first, second })[name as 'first' | 'second']);
         const { store, host } = createRoot({ n: { component: 'first', text: 'x' } });
         const node = addNode(host, 'n');
         const old = node.firstElementChild!;
@@ -90,7 +100,7 @@ describe('<sui-node> in Chromium', () => {
         // Arrange
         const tag = nextTag('stable');
         defineComponent({ tag, template: '<b>{{ $.text }}</b>' });
-        setNodeResolver(() => tag);
+        useResolver(() => tag);
         const { store, host } = createRoot({ n: { component: 'c', text: 'x' } });
         const node = addNode(host, 'n');
         const child = node.firstElementChild;
@@ -104,7 +114,7 @@ describe('<sui-node> in Chromium', () => {
 
     it('should render nothing and report SUI-NODE-MISSING for a path with no node', () => {
         // Arrange
-        setNodeResolver(() => 'x-any');
+        useResolver(() => 'x-any');
         const { host } = createRoot({ nodes: {} });
 
         // Act
@@ -117,7 +127,7 @@ describe('<sui-node> in Chromium', () => {
 
     it('should render nothing and report SUI-NODE-MISSING for a node with no component', () => {
         // Arrange
-        setNodeResolver(() => 'x-any');
+        useResolver(() => 'x-any');
         const { host } = createRoot({ n: { text: 'x' } });
 
         // Act
@@ -130,7 +140,7 @@ describe('<sui-node> in Chromium', () => {
 
     it('should render nothing and report SUI-NODE-MISSING for a name the resolver does not know', () => {
         // Arrange
-        setNodeResolver(() => undefined);
+        useResolver(() => undefined);
         const { host } = createRoot({ n: { component: 'mystery' } });
 
         // Act
@@ -145,7 +155,7 @@ describe('<sui-node> in Chromium', () => {
         // Arrange
         const label = nextTag('label');
         defineComponent({ tag: label, template: '<b>{{ $.text }}</b>' });
-        setNodeResolver((name) => name === 'label' ? label : undefined);
+        useResolver((name) => name === 'label' ? label : undefined);
         const { store, host } = createRoot({ nodes: { a: { component: 'label', text: 'hi' } } });
         const node = addNode(host, 'nodes.a');
         expect(node.firstElementChild).not.toBeNull();
@@ -162,7 +172,7 @@ describe('<sui-node> in Chromium', () => {
         // Arrange
         const label = nextTag('label');
         defineComponent({ tag: label, template: '<b>{{ $.text }}</b>' });
-        setNodeResolver((name) => name === 'label' ? label : undefined);
+        useResolver((name) => name === 'label' ? label : undefined);
         const { store, host } = createRoot({ nodes: { a: { component: 'label', text: 'hi' } } });
         const node = addNode(host, 'nodes.a');
 
@@ -178,7 +188,7 @@ describe('<sui-node> in Chromium', () => {
         // Arrange
         const label = nextTag('label');
         defineComponent({ tag: label, template: '<b>{{ $.text }}</b>' });
-        setNodeResolver((name) => name === 'label' ? label : undefined);
+        useResolver((name) => name === 'label' ? label : undefined);
         const { store, host } = createRoot({ nodes: { a: { component: 'label', text: 'hi' } } });
         const node = addNode(host, 'nodes.a');
 
@@ -205,7 +215,7 @@ describe('<sui-node> in Chromium', () => {
         // Arrange
         const tag = nextTag('late');
         defineComponent({ tag, template: '<b>{{ $.text }}</b>' });
-        setNodeResolver(() => tag);
+        useResolver(() => tag);
         const { store, host } = createRoot({});
         const node = addNode(host, 'n');
 
@@ -225,7 +235,7 @@ describe('<sui-node> in Chromium', () => {
         defineComponent({ tag: leaf, template: '<b>{{ $.text }}</b>', controller: () => ({ dispose }) });
         defineComponent({ tag: mid, template: '<sui-node state=".child"></sui-node>' });
         defineComponent({ tag: top, template: '<sui-node state=".child"></sui-node>' });
-        setNodeResolver((name) => ({ top, mid, leaf })[name as 'top' | 'mid' | 'leaf']);
+        useResolver((name) => ({ top, mid, leaf })[name as 'top' | 'mid' | 'leaf']);
         const { host } = createRoot({ a: { component: 'top', child: { component: 'mid', child: { component: 'leaf', text: 'deep' } } } });
 
         // Act
@@ -249,7 +259,7 @@ describe('<sui-node> in Chromium', () => {
         const list = nextTag('list');
         defineComponent({ tag, template: '<b>{{ $.text }}</b>' });
         defineComponent({ tag: list, template: '<sui-node repeat="{{ $k,$i,$v in $.items }}" key="{{ $k }}" state="{{ $v }}"></sui-node>' });
-        setNodeResolver(() => tag);
+        useResolver(() => tag);
         const { store, host } = createRoot({ items: { a: { component: 'r', text: 'A' }, b: { component: 'r', text: 'B' } } });
 
         // Act
@@ -261,11 +271,51 @@ describe('<sui-node> in Chromium', () => {
         expect(texts).toEqual(['A', 'B', 'C']);
     });
 
+    it('should render each root with its own resolver and options, and keep one working when the other is unmounted', () => {
+        // Arrange
+        const left = nextTag('left');
+        const right = nextTag('right');
+        defineComponent({ tag: left, template: '<b>{{ $.text }}</b>' });
+        defineComponent({ tag: right, template: '<i>{{ $.text }}</i>' });
+        useResolver(() => left);
+        useNodeOptions({ theme: { property: (path) => `--left-${path.join('-')}`, value: (text) => text }, reflect: () => ['tone'] });
+        const one = createRoot({ n: { component: 'card', text: 'one', tone: 'danger', theme: { color: 'red' } } });
+        useResolver(() => right);
+        useNodeOptions({ theme: { property: (path) => `--right-${path.join('-')}`, value: (text) => text } });
+        const two = createRoot({ n: { component: 'card', text: 'two', tone: 'danger', theme: { color: 'blue' } } });
+
+        // Act
+        const first = addNode(one.host, 'n').firstElementChild as HTMLElement;
+        const second = addNode(two.host, 'n');
+
+        // Assert
+        expect(first.localName).toBe(left);
+        expect(first.getAttribute('tone')).toBe('danger');
+        expect(first.style.getPropertyValue('--left-color')).toBe('red');
+        const child = second.firstElementChild as HTMLElement;
+        expect(child.localName).toBe(right);
+        expect(child.hasAttribute('tone')).toBe(false);
+        expect(child.style.getPropertyValue('--right-color')).toBe('blue');
+
+        // Act
+        unmount(one.host);
+        two.store.set('n.text', 'still');
+        two.store.set('n.component', 'other');
+
+        // Assert
+        expect(first.isConnected).toBe(false);
+        const next = second.firstElementChild as HTMLElement;
+        expect(next.localName).toBe(right);
+        expect(next.shadowRoot!.textContent).toBe('still');
+        expect(next.style.getPropertyValue('--right-color')).toBe('blue');
+        expect(errorSpy).not.toHaveBeenCalled();
+    });
+
     it('should stop reacting and remove the child on unmount', () => {
         // Arrange
         const tag = nextTag('gone');
         defineComponent({ tag, template: '<b>{{ $.text }}</b>' });
-        setNodeResolver(() => tag);
+        useResolver(() => tag);
         const { store, host } = createRoot({ n: { component: 'c', text: 'x' } });
         const node = addNode(host, 'n');
 
@@ -281,7 +331,7 @@ describe('<sui-node> in Chromium', () => {
         // Arrange
         const tag = nextTag('cell');
         defineComponent({ tag, template: '<b>x</b>' });
-        setNodeResolver(() => tag);
+        useResolver(() => tag);
         const { host } = createRoot({ n: { component: 'c' } });
         const grid = host.appendChild(document.createElement('div'));
         grid.style.cssText = 'display: grid; grid-template-columns: 100px 200px; width: 300px';
@@ -304,7 +354,7 @@ describe('<sui-node> in Chromium', () => {
         const plain = (state: Record<string, unknown>, template = '<b>x</b>') => {
             const tag = nextTag('p');
             defineComponent({ tag, template });
-            setNodeResolver(() => tag);
+            useResolver(() => tag);
             const root = createRoot({ n: { component: 'c', ...state } });
             const node = addNode(root.host, 'n');
             return { ...root, node, child: node.firstElementChild as HTMLElement };
@@ -394,7 +444,7 @@ describe('<sui-node> in Chromium', () => {
             // Arrange
             const property = vi.fn((path: string[]) => `--ui-${path.join('-')}`);
             const value = vi.fn((text: string) => text.replace(/\{([^}]+)\}/g, (_match, ref: string) => `var(--ui-${ref.replace(/\./g, '-')})`));
-            setNodeOptions({ theme: { property, value } });
+            useNodeOptions({ theme: { property, value } });
 
             // Act
             const { store, child } = plain({ theme: { color: { accent: { base: '#2f6f4f', soft: '{color.success.soft}' } }, button: { radius: '4px' } } });
@@ -424,7 +474,7 @@ describe('<sui-node> in Chromium', () => {
 
         it('should skip theme leaves the mapper declines', () => {
             // Arrange
-            setNodeOptions({ theme: { property: (path) => path[0] === 'skip' ? undefined : `--t-${path.join('-')}`, value: (text) => text } });
+            useNodeOptions({ theme: { property: (path) => path[0] === 'skip' ? undefined : `--t-${path.join('-')}`, value: (text) => text } });
 
             // Act
             const { child } = plain({ theme: { skip: { a: '1' }, keep: { b: '2' } } });
@@ -437,7 +487,7 @@ describe('<sui-node> in Chromium', () => {
         it('should reflect only the listed properties, with boolean, number and removal rules', () => {
             // Arrange
             const reflect = vi.fn(() => ['textRole', 'tone', 'busy', 'size', 'off']);
-            setNodeOptions({ reflect });
+            useNodeOptions({ reflect });
 
             // Act
             const { store, child } = plain({ textRole: 'heading', tone: 'danger', busy: true, size: 2, off: false, secret: { a: 1 }, label: 'no' });
@@ -465,7 +515,7 @@ describe('<sui-node> in Chromium', () => {
 
         it('should ignore unsafe names and report them', () => {
             // Arrange
-            setNodeOptions({ reflect: () => ['ok', 'bad name', 'x"y'] });
+            useNodeOptions({ reflect: () => ['ok', 'bad name', 'x"y'] });
 
             // Act
             const { child } = plain({ ok: 'v', placement: { 'a b': 1, region: 'n', 'x=y': 2 }, layout: { type: 'grid', 'bad key': 1 } });
@@ -481,7 +531,7 @@ describe('<sui-node> in Chromium', () => {
 
         it('should ignore a theme property name that is not a custom property', () => {
             // Arrange
-            setNodeOptions({ theme: { property: () => 'color', value: (text) => text } });
+            useNodeOptions({ theme: { property: () => 'color', value: (text) => text } });
 
             // Act
             const { child } = plain({ theme: { a: 'red' } });
@@ -493,7 +543,7 @@ describe('<sui-node> in Chromium', () => {
 
         it('should rebind to the new child when component changes', () => {
             // Arrange
-            setNodeOptions({ reflect: (name) => name === 'c' ? ['tone'] : [] });
+            useNodeOptions({ reflect: (name) => name === 'c' ? ['tone'] : [] });
             const { store, node, child } = plain({ tone: 'danger', placement: { region: 'nw' } });
 
             // Act

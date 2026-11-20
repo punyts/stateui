@@ -2,11 +2,14 @@ import type { Store } from '@punyts/state';
 import { StateUIError } from '../errors.js';
 import { normalizePath } from '../scope/path.js';
 import type { Callable } from '../scope/Scope.js';
+import type { NodeOptions, NodeResolver, NodeSettings } from '../node/options.js';
 import type { MountContext, ScopeProvider } from './types.js';
 import { attachWaitingBeneath, detachAttachedOwnedBy } from './waiting.js';
 
 //mounted roots; nothing is stored on the elements themselves
 const mounts: WeakMap<Element, MountContext> = new WeakMap();
+//what the <sui-node>s below each mounted root render with (mount's resolver and nodeOptions)
+const nodeSettings: WeakMap<Element, NodeSettings> = new WeakMap();
 
 /**
  * Returns the parent of a node for scope lookup, crossing from a shadow root to its host
@@ -66,6 +69,16 @@ export const findMountRoot = (el: Element): Element | undefined => {
 };
 
 /**
+ * The node settings of the nearest mounted root above el (crossing shadow roots): what a `<sui-node>` renders with.
+ * Undefined when el is not below a mounted root
+ * @param el
+ */
+export const findNodeSettings = (el: Element): NodeSettings | undefined => {
+    const root = findMountRoot(el);
+    return root === undefined ? undefined : nodeSettings.get(root);
+};
+
+/**
  * True when el is host or below it, crossing shadow roots
  * @param el
  * @param host
@@ -85,14 +98,23 @@ export const isBeneath = (el: Element, host: Element): boolean => {
  * @param host
  * @param store
  * @param path - defaults to the store root
- * @param options - callable: what expressions below call a callee through when its value is not a function
+ * @param options - callable: what expressions below call a callee through when its value is not a function;
+ *   resolver: the tag each `<sui-node>` below renders for a component name; nodeOptions: their theme mapper and reflected
+ *   properties. Each root has its own, so apps with different component libraries share a page
  * @throws StateUIError when host is already mounted or path is invalid
  */
-export const mount = (host: Element, store: Store<any>, path = '$', options: { callable?: Callable } = {}): void => {
+export const mount = (
+    host: Element,
+    store: Store<any>,
+    path = '$',
+    options: { callable?: Callable; resolver?: NodeResolver; nodeOptions?: NodeOptions } = {}
+): void => {
     if (mounts.has(host)) {
         throw new StateUIError(`<${host.localName}> is already mounted; unmount it first`);
     }
+    const nodes: NodeSettings = { ...(options.resolver !== undefined && { resolver: options.resolver }), options: options.nodeOptions ?? {} };
     mounts.set(host, { store, basePath: normalizePath(path), ...(options.callable !== undefined && { callable: options.callable }) });
+    nodeSettings.set(host, nodes);
     attachWaitingBeneath(host);
 };
 
@@ -105,5 +127,8 @@ export const unmount = (host: Element): void => {
     if (!mounts.has(host)) {
         return;
     }
-    detachAttachedOwnedBy(host, () => mounts.delete(host));
+    detachAttachedOwnedBy(host, () => {
+        mounts.delete(host);
+        nodeSettings.delete(host);
+    });
 };

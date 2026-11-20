@@ -5,7 +5,7 @@ export type { TemplateParseErrorDetails, TemplateCompileErrorDetails, StyleCompi
 export { parseTemplate, PARSE_HINT } from "./template/parse.js";
 export { tokenize } from "./template/tokenize.js";
 export type { TokenPart, TokenizeResult } from "./template/tokenize.js";
-export { mount, unmount, findParentScope } from "./component/context.js";
+export { mount, unmount, findParentScope, findNodeSettings } from "./component/context.js";
 export type { Controller, ControllerContext, ControllerResult, MountContext, ScopeConsumer, ScopeProvider } from "./component/types.js";
 export type { Callable } from "./scope/Scope.js";
 export { defineComponent } from "./component/define.js";
@@ -15,5 +15,4 @@ export type { ShadowMode } from "./component/StateUIElement.js";
 export { registerMixin, unregisterMixin } from "./mixin/registry.js";
 export type { Disposer, Mixin } from "./mixin/registry.js";
 export { SuiNode } from "./node/SuiNode.js";
-export { setNodeResolver, setNodeOptions } from "./node/options.js";
-export type { NodeOptions, NodeResolver, NodeThemeMapper } from "./node/options.js";
+export type { NodeOptions, NodeResolver, NodeSettings, NodeThemeMapper } from "./node/options.js";

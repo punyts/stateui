@@ -98,9 +98,13 @@ defineComponent({
 
 ## `mount`, `unmount` and store discovery
 
-`mount(host, store, path = '$')` makes `host` a root. A component finds its store by walking up from itself,
+`mount(host, store, path = '$', options)` makes `host` a root. A component finds its store by walking up from itself,
 crossing shadow roots, to the nearest mounted root or attached component, and takes that root's or component's
 base path. A component connected before any root is above it waits, then attaches as soon as one is mounted.
+
+`options` belong to that root: `callable` (what expressions below call a function path through), `resolver` and
+`nodeOptions` (what each `<sui-node>` below renders with, see below). Several roots share a page, each with its own
+store and component library; `findNodeSettings(el)` returns the resolver and node options of the root above `el`.
 
 `unmount(host)` detaches every component scoped from that root: bindings are disposed, rendered nodes removed, and
 still-connected components wait for a root again. Removing a component from the DOM detaches it the same way.
@@ -134,17 +138,18 @@ or flex item of the container that holds it. Stylesheets select it as `[layout=r
 It nests inside component templates (slots, keyed-map `repeat` with `state="{{ $v }}"`), and removing it disposes the
 child.
 
-The component library is not known to StateUI: the application registers the resolver once.
+The component library is not known to StateUI: the application gives each root its resolver when it mounts it, and a
+`<sui-node>` uses the resolver of the root it attaches under. Two apps on different libraries render side by side.
 
 ```ts
-import { setNodeResolver } from '@punyts/stateui';
+import { mount } from '@punyts/stateui';
 
-setNodeResolver((name) => name === 'button' ? 'ui-button' : undefined); // name => tag | undefined
+mount(host, store, '$', { resolver: (name) => name === 'button' ? 'ui-button' : undefined }); // name => tag | undefined
 ```
 
-A path with no node, a node with no `component`, or a name the resolver does not know renders nothing and reports
-`SUI-NODE-MISSING` through the `@punyts/core` reporter, with the state path. `setNodeResolver(undefined)` removes the
-resolver. A node already rendered keeps its element until its `component` changes or it is re-attached.
+A path with no node, a node with no `component`, or a name the resolver does not know (or a root with no resolver)
+renders nothing and reports `SUI-NODE-MISSING` through the `@punyts/core` reporter, with the state path. A node already
+rendered keeps its element until its `component` changes or it is re-attached.
 
 ### Placement, layout, theme and reflected properties
 
@@ -161,26 +166,26 @@ write-only, follows later changes in place, and removes the attribute or propert
 Attribute values: a string or number is written as text, `true` as `""`, and `false`, `null` and `undefined` remove the
 attribute. Properties that `reflect` does not list are never written.
 
-The application registers the theme mapper and the reflect list once, so StateUI knows neither a custom property prefix
-nor a token reference syntax.
+The application gives each root its theme mapper and reflect list when it mounts it, so StateUI knows neither a custom
+property prefix nor a token reference syntax.
 
 ```ts
-import { setNodeOptions } from '@punyts/stateui';
+import { mount } from '@punyts/stateui';
 
-setNodeOptions({
+mount(host, store, '$', { resolver, nodeOptions: {
     theme: {
         property: (path) => `--ui-${path.join('-')}`,               // ['color', 'accent', 'base'] => '--ui-color-accent-base'
         value: (text) => text.replace(/\{([^}]+)\}/g, (_m, ref) => `var(--ui-${ref.replace(/\./g, '-')})`),
     },
     reflect: (componentName) => ['tone', 'size', 'textRole'],       // componentName => node properties
-});
+} });
 ```
 
 `property` may return `undefined` to skip a leaf. StateUI validates nothing about which layout settings, tokens or
 articulation values exist. It writes only safe names: attribute names of lower-case letters, digits and `-` (starting
 with a letter), custom property names of `--` followed by letters, digits and `-`, and reflected property names of
-letters and digits. Any other name is ignored and reported as `SUI-NODE-NAME`. Options apply to nodes rendered after
-`setNodeOptions`; `setNodeOptions(undefined)` removes them.
+letters and digits. Any other name is ignored and reported as `SUI-NODE-NAME`. A root mounted without `nodeOptions`
+writes no theme and reflects nothing.
 
 ## Styles
 

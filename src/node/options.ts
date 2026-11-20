@@ -22,27 +22,8 @@ export interface NodeOptions {
     reflect?: (componentName: string) => string[];
 }
 
-let nodeResolver: NodeResolver | undefined;
-let nodeOptions: NodeOptions = {};
-
-/**
- * Registers the resolver every <sui-node> asks for a tag. A node already rendered keeps its element until its
- * `component` changes or it is re-attached; pass undefined to remove the resolver
- * @param resolver
- */
-export const setNodeResolver = (resolver: NodeResolver | undefined): void => {
-    nodeResolver = resolver;
-};
-
-export const getNodeResolver = (): NodeResolver | undefined => nodeResolver;
-
-/**
- * Registers the theme mapper and the reflected-property list every <sui-node> uses. A node already rendered keeps
- * what it wrote until its `component` changes or it is re-attached; pass undefined to remove both
- * @param options
- */
-export const setNodeOptions = (options: NodeOptions | undefined): void => {
-    nodeOptions = options ?? {};
-};
-
-export const getNodeOptions = (): NodeOptions => nodeOptions;
+/** What the nodes below a mounted root render with: the resolver of component names to tags, and the node options */
+export interface NodeSettings {
+    readonly resolver?: NodeResolver;
+    readonly options: NodeOptions;
+}

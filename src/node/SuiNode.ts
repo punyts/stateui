@@ -1,7 +1,7 @@
 import { report } from '@punyts/core';
 import Expression from '@punyts/expression';
 import { createBinding, type Binding } from '../binding/Binding.js';
-import { findParentScope } from '../component/context.js';
+import { findNodeSettings, findParentScope } from '../component/context.js';
 import type { ScopeConsumer, ScopeProvider } from '../component/types.js';
 import { connectConsumer, disconnectConsumer } from '../component/waiting.js';
 import { resolveScopePath } from '../scope/path.js';
@@ -10,7 +10,7 @@ import {
     AppliedWrites, attributeText, isSafePropertyKey, layoutWrites, placementAttributes, reportUnsafeName, themeProperties, toKebab,
     type Desired,
 } from './articulation.js';
-import { getNodeOptions, getNodeResolver } from './options.js';
+import type { NodeSettings } from './options.js';
 
 export const NODE_TAG = 'sui-node';
 export const NODE_MISSING = 'SUI-NODE-MISSING';
@@ -45,6 +45,8 @@ export class SuiNode extends HTMLElement implements ScopeProvider, ScopeConsumer
 
     scope?: Scope;
     #attached = false;
+    /** The resolver and options of the root this node is mounted under, read when it attaches */
+    #settings: NodeSettings = { options: {} };
     #binding?: Binding;
     #child?: Element;
     #subscriptions: Array<() => void> = [];
@@ -99,6 +101,7 @@ export class SuiNode extends HTMLElement implements ScopeProvider, ScopeConsumer
             return;
         }
         this.#attached = true;
+        this.#settings = findNodeSettings(this) ?? { options: {} };
         const basePath = this.#resolveBasePath(context.basePath);
         if (basePath === undefined) {
             return;
@@ -167,7 +170,7 @@ export class SuiNode extends HTMLElement implements ScopeProvider, ScopeConsumer
      * @param component
      */
     #reflectedProperties(component: string): string[] {
-        const reflect = getNodeOptions().reflect;
+        const reflect = this.#settings.options.reflect;
         if (!reflect) {
             return [];
         }
@@ -197,7 +200,7 @@ export class SuiNode extends HTMLElement implements ScopeProvider, ScopeConsumer
         this.#watch(scope, PLACEMENT.variables, ['placement'], () => {
             this.#placement.sync(child, placementAttributes(scope.evaluate(PLACEMENT)), new Map());
         });
-        const mapper = getNodeOptions().theme;
+        const mapper = this.#settings.options.theme;
         if (mapper) {
             this.#watch(scope, THEME.variables, ['theme'], () => {
                 this.#theme.sync(child, new Map(), themeProperties(scope.evaluate(THEME), mapper));
@@ -250,7 +253,7 @@ export class SuiNode extends HTMLElement implements ScopeProvider, ScopeConsumer
         }
         let tag: string | undefined;
         try {
-            tag = getNodeResolver()?.(component);
+            tag = this.#settings.resolver?.(component);
         }
         catch (error) {
             report.error(`${NODE_MISSING}: the node resolver failed for "${component}" at ${basePath}: ${error instanceof Error ? error.message : String(error)}`, { code: NODE_MISSING, state: basePath, component });
